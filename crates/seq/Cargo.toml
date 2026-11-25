@@ -1,0 +1,20 @@
+[package]
+name = "snappiesnap-seq"
+description = "SnappieSnap L0: Alphabets, IUPAC codes, sequences, topology and circular-aware ranges."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

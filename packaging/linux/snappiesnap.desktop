@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SnappieSnap
+GenericName=Molecular biology sequence editor
+Comment=Plan, visualise and document DNA, RNA and protein work
+Exec=snappiesnap %f
+Terminal=false
+Categories=Science;Biology;Education;
+MimeType=application/x-snapgene-dna;chemical/x-genbank;chemical/x-fasta;
+Keywords=DNA;plasmid;sequence;primer;cloning;GenBank;FASTA;
+Icon=snappiesnap
+StartupWMClass=snappiesnap

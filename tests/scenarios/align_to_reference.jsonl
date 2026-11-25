@@ -1,0 +1,16 @@
+# Aligning reads to a circular construct (synthetic sequences): across the origin, either strand.
+{"command": "new", "params": {"name": "pAlign", "residues": "ATGCGTACGTTAGCCGATCGGATCCTTAGGCATGCAAGCTTGACCTGAAGTCCGATACGGTACCGAGCTCGAATTCACTGGCCGTCGTTTTACAACGTCGTGACTGGGAAAACCCTGGCG", "topology": "circular"}}
+{"note": "a read across the origin with one substitution", "command": "align_to_reference", "params": {"residues": "TGACTGGGAAAACCCTGGCGATGCGAACGTTAGCCGATCGGATCCTTAGGCATGCAAGCT"}, "expect": [{"path": "/strand", "eq": "forward"}, {"path": "/start", "eq": 100}, {"path": "/end", "eq": 40}, {"path": "/mismatches", "eq": 1}, {"path": "/differences/0/position", "eq": 5}, {"path": "/differences/0/reference", "eq": "T"}]}
+{"note": "the same read from the other strand", "command": "align_to_reference", "params": {"residues": "AGCTTGCATGCCTAAGGATCCGATCGGCTAACGTTCGCATCGCCAGGGTTTTCCCAGTCA"}, "expect": [{"path": "/strand", "eq": "reverse"}, {"path": "/start", "eq": 100}, {"path": "/differences/0/position", "eq": 5}]}
+{"note": "an exact piece, with rows", "command": "align_to_reference", "params": {"residues": "CATGCAAGCTTGACCTGAAGTCCGATACGGTACCGAGCTC", "rows": true}, "expect": [{"path": "/identity", "eq": 1.0}, {"path": "/differences", "len": 0}, {"path": "/reference_row", "eq": "CATGCAAGCTTGACCTGAAGTCCGATACGGTACCGAGCTC"}]}
+{"note": "annotate a difference found by alignment", "command": "add_feature", "params": {"feature": {"name": "difference (alignment)", "kind": "misc_difference", "segments": [{"range": {"start": 5, "end": 6}}]}}}
+{"method": "doc.get", "params": {"residues": false}, "expect": {"path": "/molecule/features/0/kind", "eq": "misc_difference"}}
+{"note": "no sequence given", "command": "align_to_reference", "params": {}, "expect_error": "invalid_params"}
+{"note": "not bases", "command": "align_to_reference", "params": {"residues": "ACGT123"}, "expect_error": "invalid_params"}
+{"note": "a construct open in another tab is aligned by its id: the only way in the web build, where the page has no file paths", "command": "new", "params": {"name": "insert", "residues": "CATGCAAGCTTGACCTGAAGTCCGATACGGTACCGAGCTC", "topology": "linear"}}
+{"command": "align_to_reference", "params": {"document": 1, "mode": "local"}, "expect": [{"path": "/identity", "eq": 1.0}, {"path": "/differences", "len": 0}]}
+{"note": "a tab that is not open", "command": "align_to_reference", "params": {"document": 99}, "expect_error": "not_found"}
+{"note": "a file and a tab together", "command": "align_to_reference", "params": {"document": 1, "residues": "ACGT"}, "expect_error": "invalid_params"}
+{"note": "proteins: BLOSUM62, a conservative change counts as similar", "command": "new", "params": {"name": "protein", "residues": "MKTAYIAKQR", "alphabet": "protein"}}
+{"command": "align_to_reference", "params": {"residues": "MKTAYVAKQR", "mode": "global"}, "expect": [{"path": "/kind", "eq": "protein"}, {"path": "/score", "eq": 48}, {"path": "/identity", "eq": 0.9}, {"path": "/similarity", "eq": 1.0}, {"path": "/differences/0/position", "eq": 5}, {"path": "/differences/0/query", "eq": "V"}]}
+{"note": "protein scores can't use nucleotide match/mismatch", "command": "align_to_reference", "params": {"residues": "MK", "matched": 2}, "expect_error": "invalid_params"}

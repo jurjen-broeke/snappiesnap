@@ -1,0 +1,15 @@
+# Cloning constructs that are open in tabs, naming them by document id instead of by file.
+# This is the only way the web build can clone, because a browser gives the page no file paths,
+# and it is what the Cloning experiment sends when a construct is picked from the open tabs.
+{"command": "new", "params": {"name": "pVec", "residues": "GGGGGAAGCTTGGGGGGGGGGGGGGGGGGG", "topology": "circular"}}
+{"command": "new", "params": {"name": "pIns", "residues": "AAGCTTCCGGAATTCGGCCAAGCTT", "topology": "linear"}}
+{"note": "the tabs and their ids", "command": "documents", "expect": [{"path": "/documents", "len": 2}, {"path": "/documents/0/name", "eq": "pVec"}, {"path": "/documents/0/id", "eq": 1}, {"path": "/documents/1/id", "eq": 2}]}
+{"note": "neither tab was ever saved, so neither has a file", "command": "documents", "expect": [{"path": "/documents/0/path", "eq": null}, {"path": "/documents/1/path", "eq": null}]}
+{"note": "a restriction clone of two tabs", "command": "restriction_clone", "params": {"vector_document": 1, "insert_document": 2, "vector_enzymes": ["HindIII"], "preview": true}, "expect": [{"path": "/constructs", "len": 2}, {"path": "/constructs/0/length", "eq": 49}]}
+{"note": "a tab that isn't open is reported, not guessed at", "command": "restriction_clone", "params": {"vector_document": 77, "insert_document": 2, "vector_enzymes": ["HindIII"]}, "expect_error": "not_found"}
+{"note": "a file and a tab for the same side is a mistake, not a silent choice", "command": "restriction_clone", "params": {"vector": "pVec.gb", "vector_document": 1, "insert_document": 2, "vector_enzymes": ["HindIII"]}, "expect_error": "invalid_params"}
+{"note": "run it for real: the product opens as a third tab", "command": "restriction_clone", "params": {"vector_document": 1, "insert_document": 2, "vector_enzymes": ["HindIII"]}}
+{"command": "documents", "expect": [{"path": "/documents", "len": 3}, {"path": "/documents/2/dirty", "eq": true}]}
+{"command": "sequence_info", "expect": {"path": "/length", "eq": 49}}
+{"command": "history_tree", "expect": [{"path": "/steps/operation", "eq": "Restriction cloning"}]}
+{"note": "an assembly names a part the same way", "command": "assemble", "params": {"method": "gibson", "parts": [{"document": 1}, {"document": 2}], "preview": true}, "expect_error": "invalid_input"}

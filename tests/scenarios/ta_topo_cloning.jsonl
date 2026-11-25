@@ -1,0 +1,15 @@
+# TA and TOPO cloning of a PCR product into a circular vector (synthetic sequences).
+{"command": "new", "params": {"name": "pVec", "residues": "ATGCGTACGTTAGCCGATCGGATCCTTAGGCATGCAAGCT", "topology": "circular"}}
+{"note": "preview: both orientations", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}, "position": 40, "preview": true}, "expect": [{"path": "/constructs", "len": 2}, {"path": "/constructs/0/length", "eq": 74}, {"path": "/constructs/1/reversed", "eq": true}]}
+{"note": "TA: the vector, T, the insert, A", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}, "position": 40}}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 74}}, "expect": {"path": "/residues", "eq": "ATGCGTACGTTAGCCGATCGGATCCTTAGGCATGCAAGCTTATGCGTACGTTAGCCGATCGGATCCTTAGGCAA"}}
+{"command": "history_tree", "expect": [{"path": "/steps/operation", "eq": "TA cloning"}, {"path": "/steps/inputs/1/operation", "eq": "PCR"}]}
+{"command": "switch_document", "params": {"index": 0}}
+{"note": "reversed insert", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}, "position": 40, "product": 1}}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 74}}, "expect": {"path": "/residues", "eq": "ATGCGTACGTTAGCCGATCGGATCCTTAGGCATGCAAGCTTTGCCTAAGGATCCGATCGGCTAACGTACGCATA"}}
+{"command": "switch_document", "params": {"index": 0}}
+{"note": "blunt TOPO opened at 10 keeps the vector's numbering", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}, "position": 10, "kind": "blunt"}}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 72}}, "expect": {"path": "/residues", "eq": "ATGCGTACGTATGCGTACGTTAGCCGATCGGATCCTTAGGCATAGCCGATCGGATCCTTAGGCATGCAAGCT"}}
+{"command": "switch_document", "params": {"index": 0}}
+{"note": "directional TOPO needs CACC at the start of the insert", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}, "position": 10, "kind": "directional"}, "expect_error": "invalid_input"}
+{"note": "a circular vector needs a position", "command": "topo_clone", "params": {"pcr": {"forward": "ATGCGTACGTTA", "reverse": "TGCCTAAGGATC"}}, "expect_error": "invalid_input"}

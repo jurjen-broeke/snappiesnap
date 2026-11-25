@@ -1,0 +1,11 @@
+# Unsaved work is never dropped silently; documents open in tabs side by side.
+{"command": "new", "params": {"residues": "ACGT"}}
+{"note": "a second document opens in its own tab", "command": "new", "params": {"residues": "GGGG"}}
+{"command": "insert", "params": {"at": 0, "residues": "T"}}
+{"command": "close", "expect_error": "not_enabled"}
+{"method": "doc.get", "expect": {"path": "/molecule/seq/residues", "eq": "TGGGG"}}
+{"command": "close", "params": {"discard_changes": true}}
+{"note": "the other tab is active again, unchanged", "method": "doc.get", "expect": {"path": "/molecule/seq/residues", "eq": "ACGT"}}
+{"command": "close"}
+{"method": "doc.get", "expect": {"path": "/open", "eq": false}}
+{"command": "insert", "params": {"at": 0, "residues": "A"}, "expect_error": "no_document"}

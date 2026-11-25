@@ -1,0 +1,5 @@
+Name	Sequence	Notes
+seqF	GGCTAGCTAGGATCCATCG	sequencing, forward
+seqR	CGTAGTCCATGCATCAGTCA	
+tailed	gaattcTGACTGATGCATGGACTACG	
+elsewhere	TTTTTGGGGGCCCCCAAAAA	

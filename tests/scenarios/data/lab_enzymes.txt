@@ -1,0 +1,4 @@
+Lab enzymes (synthetic test set)
+
+EcoRI, BamHI, SmaI,
+BlnI

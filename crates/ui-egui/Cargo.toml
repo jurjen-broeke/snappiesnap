@@ -1,0 +1,30 @@
+[package]
+name = "snappiesnap-ui-egui"
+description = "SnappieSnap L5: The thin egui shell and the JSON control channel. All actions go through the engine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+eframe.workspace = true
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+snappiesnap-engine.workspace = true
+snappiesnap-layout.workspace = true
+snappiesnap-render.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd.workspace = true
+image.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = ["BeforeUnloadEvent", "Blob", "BlobPropertyBag", "Document", "Element", "Event", "EventTarget", "File", "FileList", "HtmlAnchorElement", "HtmlElement", "HtmlInputElement", "Node", "Url", "Window"] }
+
+[lints]
+workspace = true

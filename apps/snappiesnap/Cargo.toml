@@ -1,0 +1,78 @@
+[package]
+name = "snappiesnap"
+description = "SnappieSnap: Desktop app (egui/eframe)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+snappiesnap-engine.workspace = true
+snappiesnap-ui-egui.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+embed-resource.workspace = true
+
+# Linux packages (cargo-deb, cargo-generate-rpm; see docs/packaging.md). Both ship the app
+# and the command-line tool. The display and GPU libraries are loaded at run time, so the only
+# hard dependency is glibc; Vulkan drivers and the desktop portal (file dialogs) are recommended.
+[package.metadata.deb]
+name = "snappiesnap"
+maintainer = "SnappieSnap project"
+copyright = "SnappieSnap contributors"
+extended-description = "SnappieSnap plans, visualises and documents DNA, RNA and protein work: sequence and plasmid maps, features, primers, restriction and cloning simulation, and alignments."
+section = "science"
+priority = "optional"
+depends = "libc6 (>= 2.28)"
+recommends = "libvulkan1, mesa-vulkan-drivers, xdg-desktop-portal"
+assets = [
+    ["target/release/snappiesnap", "usr/bin/", "755"],
+    ["target/release/snappiesnap-cli", "usr/bin/", "755"],
+    ["../../packaging/linux/snappiesnap.desktop", "usr/share/applications/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/16x16/apps/snappiesnap.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/22x22/apps/snappiesnap.png", "usr/share/icons/hicolor/22x22/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/24x24/apps/snappiesnap.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/32x32/apps/snappiesnap.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/48x48/apps/snappiesnap.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/64x64/apps/snappiesnap.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/128x128/apps/snappiesnap.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/256x256/apps/snappiesnap.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/512x512/apps/snappiesnap.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+    ["../../assets/brand/icons/linux/hicolor/scalable/apps/snappiesnap.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../README.md", "usr/share/doc/snappiesnap/README.md", "644"],
+    ["../../ATTRIBUTION.md", "usr/share/doc/snappiesnap/ATTRIBUTION.md", "644"],
+    ["../../LICENSE-MIT", "usr/share/doc/snappiesnap/LICENSE-MIT", "644"],
+    ["../../LICENSE-APACHE", "usr/share/doc/snappiesnap/LICENSE-APACHE", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "snappiesnap"
+summary = "Molecular biology sequence editor"
+assets = [
+    { source = "target/release/snappiesnap", dest = "/usr/bin/snappiesnap", mode = "755" },
+    { source = "target/release/snappiesnap-cli", dest = "/usr/bin/snappiesnap-cli", mode = "755" },
+    { source = "../../packaging/linux/snappiesnap.desktop", dest = "/usr/share/applications/snappiesnap.desktop", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/16x16/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/16x16/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/22x22/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/22x22/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/24x24/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/24x24/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/32x32/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/32x32/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/48x48/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/48x48/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/64x64/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/64x64/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/128x128/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/128x128/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/256x256/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/256x256/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/512x512/apps/snappiesnap.png", dest = "/usr/share/icons/hicolor/512x512/apps/snappiesnap.png", mode = "644" },
+    { source = "../../assets/brand/icons/linux/hicolor/scalable/apps/snappiesnap.svg", dest = "/usr/share/icons/hicolor/scalable/apps/snappiesnap.svg", mode = "644" },
+    { source = "../../README.md", dest = "/usr/share/doc/snappiesnap/README.md", mode = "644", doc = true },
+    { source = "../../ATTRIBUTION.md", dest = "/usr/share/doc/snappiesnap/ATTRIBUTION.md", mode = "644", doc = true },
+    { source = "../../LICENSE-MIT", dest = "/usr/share/licenses/snappiesnap/LICENSE-MIT", mode = "644" },
+    { source = "../../LICENSE-APACHE", dest = "/usr/share/licenses/snappiesnap/LICENSE-APACHE", mode = "644" },
+]
+
+[package.metadata.generate-rpm.recommends]
+vulkan-loader = "*"
+xdg-desktop-portal = "*"
+
+[lints]
+workspace = true

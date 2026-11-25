@@ -1,0 +1,336 @@
+# Publishing a release. Pushing a version tag (`v0.39.0`, matching the workspace version in
+# Cargo.toml) is the decision to release: this workflow runs the quality gate, builds every
+# package and publishes a GitHub release with the version's CHANGELOG entry as its notes.
+#
+#   git tag v0.39.0 && git push origin v0.39.0
+#
+# Packages (docs/packaging.md):
+#   snappiesnap_<v>_amd64.deb, snappiesnap-<v>-1.x86_64.rpm   Linux, glibc 2.28 and newer
+#   SnappieSnap-<v>-windows-x64-setup.exe / .msi              Windows, per-user and per-machine
+#   SnappieSnap-<v>-macos-universal.dmg                       macOS, Apple silicon + Intel
+#   SnappieSnap-<v>-web.tar.gz                                static files for a web server
+#
+# latest.json is uploaded too: the app's "Check for updates" reads it from the latest release
+# (crates/ui-egui/src/updates.rs).
+#
+# Signing is optional. Without these repository secrets the packages are unsigned and other
+# computers warn about them; with them the workflow signs automatically:
+#   WINDOWS_CERT_P12_BASE64, WINDOWS_CERT_PASSWORD   Authenticode signing of the .exe and .msi
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD,      Developer ID signing of the .app and .dmg
+#   MACOS_SIGN_IDENTITY
+#   MACOS_NOTARY_API_KEY_ID, MACOS_NOTARY_API_ISSUER_ID,
+#   MACOS_NOTARY_API_KEY_BASE64                      notarisation, so Gatekeeper stays quiet
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build every package but publish no release
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  # The version the packages carry, and the release notes, decided once and used by every job.
+  version:
+    name: version and notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Read the workspace version and check the tag
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          if [ -z "$version" ]; then
+            echo "error: no version in Cargo.toml" >&2
+            exit 1
+          fi
+          echo "SnappieSnap ${version}"
+          # A tag must name the version it releases, or the packages and the release disagree.
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "error: tag ${GITHUB_REF_NAME} does not match the workspace version ${version} (expected v${version})" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Extract this version's CHANGELOG entry
+        run: |
+          set -euo pipefail
+          version="${{ steps.v.outputs.version }}"
+          awk -v v="## ${version} " '
+            index($0, v) == 1 { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "SnappieSnap ${version}." > notes.md
+          fi
+          cat notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes.md
+
+  # The same gate CI runs, so a tag can never publish a build that would not have been merged.
+  gate:
+    name: quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: gate
+      - run: cargo xtask ci
+
+  # x86-64 Linux, built in cross's CentOS 7 image (glibc 2.17) so the binaries run on every
+  # distribution the packages promise. The glibc check is the gate: a changed image cannot
+  # silently raise the requirement.
+  linux:
+    name: linux packages
+    needs: [version, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux
+      - name: Install cross and the package builders
+        run: |
+          set -euo pipefail
+          cargo install --locked --git https://github.com/cross-rs/cross cross
+          cargo install --locked cargo-deb@^2 cargo-generate-rpm@^0.16
+      - name: Build
+        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli
+      - name: Check the glibc the binaries need
+        run: |
+          set -euo pipefail
+          for bin in snappiesnap snappiesnap-cli; do
+            need="$(objdump -T "target/$TARGET/release/$bin" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -n1)"
+            echo "$bin needs glibc ${need}"
+            if [ "$(printf '%s\n' "$need" 2.28 | sort -V | tail -n1)" != "2.28" ]; then
+              echo "error: $bin needs glibc ${need}, newer than 2.28 (check the image in Cross.toml)" >&2
+              exit 1
+            fi
+          done
+      - name: Package (.deb and .rpm)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cargo deb -p snappiesnap --target "$TARGET" --no-build --output "dist/snappiesnap_${VERSION}_amd64.deb"
+          cargo generate-rpm -p apps/snappiesnap --target "$TARGET" --output dist/
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  # Windows binaries are cross-compiled with MinGW-w64 (no Microsoft SDK licence needed) and
+  # both installers are built on Linux: NSIS for the per-user .exe, msitools for the .msi.
+  windows:
+    name: windows packages
+    needs: [version, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET: x86_64-pc-windows-gnu
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+      - name: Install cross and the installer tools
+        run: |
+          set -euo pipefail
+          cargo install --locked --git https://github.com/cross-rs/cross cross
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsis msitools osslsigncode
+      - name: Build
+        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli
+      - name: Build the installers, signing them when a certificate is configured
+        env:
+          WINDOWS_CERT_P12_BASE64: ${{ secrets.WINDOWS_CERT_P12_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SRC="target/${TARGET}/release"
+          mkdir -p dist
+          cert=""
+          if [ -n "${WINDOWS_CERT_P12_BASE64:-}" ]; then
+            cert="$(mktemp)"
+            printf '%s' "$WINDOWS_CERT_P12_BASE64" | base64 -d > "$cert"
+          else
+            echo "::warning::no WINDOWS_CERT_P12_BASE64; the Windows packages are unsigned (SmartScreen will warn)"
+          fi
+          sign() {
+            [ -n "$cert" ] || return 0
+            osslsigncode sign -pkcs12 "$cert" -pass "$WINDOWS_CERT_PASSWORD" \
+              -n "SnappieSnap" -h sha256 -ts http://timestamp.digicert.com \
+              -in "$1" -out "$1.signed"
+            mv "$1.signed" "$1"
+          }
+          sign "$SRC/snappiesnap.exe"
+          sign "$SRC/snappiesnap-cli.exe"
+          makensis -NOCD -DVERSION="$VERSION" -DSRC="$SRC" \
+            -DOUT="dist/SnappieSnap-${VERSION}-windows-x64-setup.exe" packaging/windows/installer.nsi
+          wixl -a x64 -D Version="$VERSION" -D Src="$SRC" \
+            -o "dist/SnappieSnap-${VERSION}-windows-x64.msi" packaging/windows/snappiesnap.wxs
+          sign "dist/SnappieSnap-${VERSION}-windows-x64-setup.exe"
+          sign "dist/SnappieSnap-${VERSION}-windows-x64.msi"
+          [ -z "$cert" ] || rm -f "$cert"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  # The universal .dmg, built on a Mac because Apple's SDK may only be used on Apple hardware.
+  macos:
+    name: macos package
+    needs: [version, gate]
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos
+      - name: Import the signing certificate, when one is configured
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERT_P12_BASE64:-}" ]; then
+            echo "::warning::no MACOS_CERT_P12_BASE64; the app is signed ad hoc (Gatekeeper will warn on other Macs)"
+            exit 0
+          fi
+          # A keychain of this run's own, unlocked, holding only this certificate.
+          password="$(uuidgen)"
+          security create-keychain -p "$password" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$password" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          cert="$(mktemp)"
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 -D > "$cert"
+          security import "$cert" -k build.keychain -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" build.keychain
+          rm -f "$cert"
+          security find-identity -v -p codesigning
+      - name: Store the notarisation credentials, when they are configured
+        env:
+          MACOS_NOTARY_API_KEY_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_BASE64 }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_NOTARY_API_KEY_BASE64:-}" ]; then
+            echo "::warning::no notarisation credentials; the .dmg is not notarised"
+            exit 0
+          fi
+          key="${RUNNER_TEMP}/notary.p8"
+          printf '%s' "$MACOS_NOTARY_API_KEY_BASE64" | base64 -D > "$key"
+          xcrun notarytool store-credentials snappiesnap-notary \
+            --key "$key" --key-id "$MACOS_NOTARY_API_KEY_ID" --issuer "$MACOS_NOTARY_API_ISSUER_ID"
+          rm -f "$key"
+          echo "MACOS_NOTARY_PROFILE=snappiesnap-notary" >> "$GITHUB_ENV"
+      - name: Build the .dmg
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: ./packaging/macos/build-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  # The web version: the same `cargo xtask web` build a developer runs, packed for a server.
+  web:
+    name: web package
+    needs: [version, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: web
+      - name: Install trunk
+        run: cargo install --locked trunk@^0.22
+      - name: cargo xtask web
+        run: |
+          cargo xtask web
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist/*-web.tar.gz
+          if-no-files-found: error
+
+  # Every package in one release, with the version's changelog entry as its notes.
+  publish:
+    name: publish the release
+    needs: [version, linux, windows, macos, web]
+    if: github.ref_type == 'tag' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Collect the packages and announce the version
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find packages -type f ! -name notes.md -exec mv -t dist {} +
+          # What "Check for updates" reads from the latest release.
+          cat > dist/latest.json <<JSON
+          {
+            "version": "${VERSION}",
+            "url": "https://github.com/${GITHUB_REPOSITORY}/releases/latest"
+          }
+          JSON
+          ls -l dist
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          notes=packages/notes/notes.md
+          [ -s "$notes" ] || echo "SnappieSnap ${VERSION}." > "$notes"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "release v${VERSION} exists; uploading the packages to it"
+            gh release upload "v${VERSION}" dist/* --clobber
+          else
+            gh release create "v${VERSION}" dist/* \
+              --title "SnappieSnap ${VERSION}" --notes-file "$notes"
+          fi

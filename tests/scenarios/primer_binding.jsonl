@@ -1,0 +1,17 @@
+# Primer binding rules (Preferences > Primers) on a synthetic template: a weak site with one isolated mismatch, and an exact AT-rich site.
+{"command": "new", "params": {"name": "pBind", "residues": "AAAAAAAAAAACGTTGCATGCAAGCTTGGCACTGGCCGTCGTTTTACAAAAAAAAAA"}}
+{"command": "add_primer", "params": {"name": "weak", "residues": "CGTTGCATGCAAACTT"}}
+{"command": "add_primer", "params": {"name": "at", "residues": "AAAAAAAAAAACGTTG"}}
+{"note": "defaults", "command": "primer_binding", "params": {}, "expect": [{"path": "/long_from_bp", "eq": 1000000}, {"path": "/short", "eq": {"matched": 10, "isolated_mismatches": true, "min_tm_on": true, "min_tm": 40.0}}, {"path": "/long", "eq": {"matched": 15, "isolated_mismatches": false, "min_tm_on": true, "min_tm": 40.0}}]}
+{"note": "the isolated mismatch is tolerated; its paired stretch melts above 40 °C", "command": "primer_sites", "params": {}, "expect": [{"path": "/primers/0/sites/0/mismatches", "eq": 1}, {"path": "/primers/1/sites/0/primary", "eq": true}]}
+{"note": "the long sequences' minimum leaves this 57 bp template alone", "command": "primer_binding", "params": {"long": {"min_tm": 80}}}
+{"command": "primer_sites", "params": {}, "expect": {"path": "/primers/0/sites/0/mismatches", "eq": 1}}
+{"note": "a higher minimum for short sequences drops the weak site, never the primary one (39.5 °C)", "command": "primer_binding", "params": {"short": {"min_tm": 45}}}
+{"command": "primer_sites", "params": {}, "expect": [{"path": "/primers/0/sites", "eq": []}, {"path": "/primers/1/sites/0/primary", "eq": true}]}
+{"command": "primer_binding", "params": {"short": {"min_tm_on": false}}, "expect": {"path": "/short/min_tm", "eq": 45.0}}
+{"command": "primer_sites", "params": {}, "expect": {"path": "/primers/0/sites/0/annealed", "eq": 16}}
+{"note": "without isolated mismatches, the 10 3' bases must pair exactly", "command": "primer_binding", "params": {"short": {"isolated_mismatches": false}}}
+{"command": "primer_sites", "params": {}, "expect": {"path": "/primers/0/sites", "eq": []}}
+{"note": "explicit rules override the session's", "command": "primer_sites", "params": {"window": 10, "mismatches": 1, "clamp": 3}, "expect": {"path": "/primers/0/sites/0/mismatches", "eq": 1}}
+{"note": "the cut-off is a template length in bp", "command": "primer_binding", "params": {"long_from_bp": 100}, "expect_error": "invalid_params"}
+{"command": "primer_binding", "params": {"short": {"matched": 5}}, "expect_error": "invalid_params"}

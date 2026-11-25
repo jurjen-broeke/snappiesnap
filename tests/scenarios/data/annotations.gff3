@@ -1,0 +1,5 @@
+##gff-version 3
+# Synthetic annotations for tests/scenarios/import_annotations.jsonl (made up, not from any record).
+demo	synthetic	promoter	2	6	.	+	.	ID=p1;Name=demo promoter
+demo	synthetic	CDS	15	24	.	+	0	ID=c1;Name=across the origin;Note=ends past the length%2C so it wraps
+demo	synthetic	terminator	30	40	.	-	.	ID=t1;Name=too far

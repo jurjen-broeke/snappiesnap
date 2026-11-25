@@ -1,0 +1,25 @@
+[package]
+name = "snappiesnap-bio"
+description = "SnappieSnap L2: Molecular biology algorithms: enzymes and digests, Tm and primers, ORFs and translation, alignment, cloning simulation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Tests over the local, never-committed corpus in `corpus/` (`cargo xtask corpus-test`).
+corpus = []
+
+[dependencies]
+snappiesnap-seq.workspace = true
+snappiesnap-doc.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+snappiesnap-formats.workspace = true
+
+[lints]
+workspace = true

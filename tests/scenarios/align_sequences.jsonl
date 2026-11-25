@@ -1,0 +1,9 @@
+# Multiple sequence alignment of pasted sequences (synthetic): FASTA and plain blocks.
+{"note": "FASTA: one deletion and one insertion each add a column with a gap", "command": "align_sequences", "params": {"text": ">a\nACGTTGCAAGGCTTACGATCG\n>b\nACGTTGCAGGCTTACGATCG\n>c\nACGTTGCAAGGCTTTACGATCG\n"}, "expect": [{"path": "/kind", "eq": "dna"}, {"path": "/rows", "len": 3}, {"path": "/columns", "eq": 22}, {"path": "/identical_columns", "eq": 20}, {"path": "/rows/1/name", "eq": "b"}]}
+{"note": "plain sequences separated by blank lines, numbers and spaces dropped", "command": "align_sequences", "params": {"text": "1 ACGTTGCAAG GCTTACGATCG\n\nACGTTGCAAGGCTTACGATCG\n"}, "expect": [{"path": "/rows", "len": 2}, {"path": "/rows/0/name", "eq": "sequence 1"}, {"path": "/identical_columns", "eq": 21}]}
+{"note": "proteins are recognised", "command": "align_sequences", "params": {"text": ">p\nMKTAYIAKQRQISFVKSHFSRQ\n>q\nMKTAYVAKQRQISFVKSHFSRQ"}, "expect": {"path": "/kind", "eq": "protein"}}
+{"note": "one sequence is not enough", "command": "align_sequences", "params": {"text": ">a\nACGT"}, "expect_error": "invalid_params"}
+{"note": "sequences from the open tabs, which is how the web build aligns files it has loaded", "command": "new", "params": {"name": "one", "residues": "ACGTTGCAAGGCTTACGATCG"}}
+{"command": "new", "params": {"name": "two", "residues": "ACGTTGCAGGCTTACGATCG"}}
+{"command": "align_sequences", "params": {"documents": [1, 2]}, "expect": [{"path": "/rows", "len": 2}, {"path": "/rows/0/name", "eq": "one"}, {"path": "/rows/1/name", "eq": "two"}]}
+{"note": "a tab that is not open", "command": "align_sequences", "params": {"documents": [1, 99]}, "expect_error": "not_found"}

@@ -1,0 +1,72 @@
+# The quality gate. `cargo xtask ci` is the same gate contributors run before committing
+# (AGENTS.md › Before you finish a task): fmt, clippy -D warnings, the whole test suite
+# (including hostile_input, the scenario replays and MCP command coverage), crate layering, the
+# never-crash lint opt-in, dependency licences, asset attribution, repository hygiene and the
+# WASM build.
+#
+# The gate runs on Linux. macOS and Windows run the test suite, so platform-specific breakage
+# (paths, line endings, file dialogs) is caught without running every gate three times.
+#
+# The Windows runner is the long pole: compiling and linking this workspace there takes
+# considerably longer than on Linux or macOS, so its job is expected to finish well after the
+# others. The cache below makes later runs much faster, since only changed crates rebuild. Every
+# job has a timeout, so a hung runner fails in bounded time instead of burning hours.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  gate:
+    name: quality gate (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml pins the version, rustfmt, clippy and the wasm32 target, so there
+      # is nothing to choose here: rustup installs exactly that.
+      - name: Install the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustc --version && cargo --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: gate
+      - name: cargo xtask ci
+        run: cargo xtask ci
+
+  tests:
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Windows needs most of this; Linux and macOS finish long before it.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustc --version && cargo --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: tests-${{ matrix.os }}
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked

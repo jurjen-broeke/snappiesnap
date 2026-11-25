@@ -1,0 +1,7 @@
+# trunk build --release: the web app as static files in dist/web (see docs/web.md).
+[build]
+target = "index.html"
+dist = "../../dist/web"
+# Relative URLs, so the folder can be served from any path on any server.
+public_url = "./"
+filehash = true

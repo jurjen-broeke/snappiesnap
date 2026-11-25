@@ -1,0 +1,19 @@
+[package]
+name = "snappiesnap-cli"
+description = "SnappieSnap: Headless command-line interface: info, convert, run, mcp."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+snappiesnap-engine.workspace = true
+snappiesnap-io.workspace = true
+snappiesnap-mcp.workspace = true
+snappiesnap-render.workspace = true
+snappiesnap-ui-egui.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,9 @@
+# Find in a circular molecule (synthetic): both strands, IUPAC, across the origin, names.
+{"command": "new", "params": {"name": "pFind", "residues": "GAATTCAAATGGTCCCACCAGGGGGGGGGG", "topology": "circular"}}
+{"command": "add_feature", "params": {"feature": {"name": "lacZ alpha", "kind": "CDS", "strand": "forward", "segments": [{"range": {"start": 6, "end": 14}}]}}}
+{"note": "a palindrome is found once", "command": "find", "params": {"query": "GAATTC"}, "expect": [{"path": "/matches", "len": 1}, {"path": "/matches/0/range/start", "eq": 0}]}
+{"note": "IUPAC: GRTC matches nothing here but GAWTTC matches GAATTC", "command": "find", "params": {"query": "GAWTTC", "names": false}, "expect": {"path": "/matches", "len": 1}}
+{"note": "bottom strand", "command": "find", "params": {"query": "ACCATTTG", "names": false}, "expect": [{"path": "/matches/0/strand", "eq": "reverse"}, {"path": "/matches/0/range/start", "eq": 5}]}
+{"note": "across the origin", "command": "find", "params": {"query": "GGGGAATT"}, "expect": {"path": "/matches/0/range", "eq": {"start": 27, "end": 5}}}
+{"note": "feature names, any case", "command": "find", "params": {"query": "LACZ"}, "expect": [{"path": "/matches/0/kind", "eq": "feature"}, {"path": "/matches/0/name", "eq": "lacZ alpha"}]}
+{"note": "too many mismatches", "command": "find", "params": {"query": "GAATTC", "mismatches": 4}, "expect_error": "invalid_params"}

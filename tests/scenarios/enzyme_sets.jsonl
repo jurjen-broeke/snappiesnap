@@ -1,0 +1,14 @@
+# A lab's own enzyme set (synthetic): import it, pick sites from it, delete it.
+{"note": "no sets yet", "command": "enzyme_sets_list", "params": {}, "expect": {"path": "/sets", "len": 0}}
+{"note": "an exported set takes its title; BlnI is not built in (REBASE 610 lists no supplier for that name)", "command": "enzyme_set_import", "params": {"path": "../../tests/scenarios/data/lab_enzymes.txt"}, "expect": [{"path": "/name", "eq": "Lab enzymes (synthetic test set)"}, {"path": "/count", "eq": 4}, {"path": "/missing/0", "eq": "BlnI"}]}
+{"command": "new", "params": {"name": "pSet", "residues": "GAATTCAAAAAAAAAAGGATCCAAAAAAAAAACCCGGGAAAAAAAAAAGGATCCAAAAAAAAAAGTCGACAAAA", "topology": "circular"}}
+{"note": "unique cutters from the set: EcoRI and SmaI (BamHI cuts twice)", "command": "enzyme_sites", "params": {"set": "lab enzymes (synthetic test set)"}, "expect": [{"path": "/enzymes", "len": 2}, {"path": "/enzymes/0/name", "eq": "EcoRI"}, {"path": "/enzymes/1/name", "eq": "SmaI"}]}
+{"note": "up to two cuts brings in BamHI", "command": "enzyme_sites", "params": {"set": "Lab enzymes (synthetic test set)", "max_cuts": 2}, "expect": {"path": "/enzymes", "len": 3}}
+{"note": "a set built in the app from ticked enzymes: no file anywhere, which is how the web version does it", "command": "enzyme_set_create", "params": {"name": "My bench", "enzymes": ["EcoRI", "SmaI"]}, "expect": [{"path": "/count", "eq": 2}, {"path": "/replaced", "eq": false}, {"path": "/missing", "len": 0}]}
+{"note": "saving it again under the same name replaces it: that is how a set is edited", "command": "enzyme_set_create", "params": {"name": "my bench", "enzymes": ["EcoRI", "SmaI", "SalI"]}, "expect": [{"path": "/count", "eq": 3}, {"path": "/replaced", "eq": true}]}
+{"command": "enzyme_sets_list", "params": {}, "expect": [{"path": "/sets", "len": 2}]}
+{"note": "an enzyme the database hasn't got is kept in the set and reported, so a lab that owns it can still name it", "command": "enzyme_set_create", "params": {"name": "Legacy", "enzymes": ["EcoRI", "BlnI"]}, "expect": [{"path": "/count", "eq": 2}, {"path": "/missing/0", "eq": "BlnI"}]}
+{"command": "enzyme_set_delete", "params": {"name": "Legacy"}}
+{"command": "enzyme_set_delete", "params": {"name": "My bench"}}
+{"command": "enzyme_set_delete", "params": {"name": "Lab enzymes (synthetic test set)"}, "expect": {"path": "/deleted", "eq": "Lab enzymes (synthetic test set)"}}
+{"note": "a deleted set can't be used", "command": "enzyme_sites", "params": {"set": "Lab enzymes (synthetic test set)"}, "expect_error": "not_found"}

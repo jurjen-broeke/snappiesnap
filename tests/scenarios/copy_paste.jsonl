@@ -1,0 +1,10 @@
+# Copy and paste in a circular molecule (synthetic): across the origin, FASTA, cleaning, undo.
+{"command": "new", "params": {"name": "pClip", "residues": "AAAACCCCGG", "topology": "circular"}}
+{"command": "select", "params": {"range": {"start": 8, "end": 2}}}
+{"note": "a selection across the origin copies in order", "command": "copy_selection", "expect": {"path": "/text", "eq": "GGAA"}}
+{"command": "copy_selection", "params": {"format": "reverse_complement"}, "expect": {"path": "/text", "eq": "TTCC"}}
+{"note": "pasting FASTA with numbers and gaps at position 4", "command": "paste", "params": {"text": ">frag\n1 TT-TT\n", "at": 4}, "expect": [{"path": "/pasted", "eq": 4}, {"path": "/end", "eq": 8}, {"path": "/notes", "len": 1}]}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 14}}, "expect": {"path": "/residues", "eq": "AAAATTTTCCCCGG"}}
+{"note": "not residues: refused", "command": "paste", "params": {"text": "AC#GT"}, "expect_error": "invalid_input"}
+{"command": "undo"}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 10}}, "expect": {"path": "/residues", "eq": "AAAACCCCGG"}}

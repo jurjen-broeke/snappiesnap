@@ -1,0 +1,10 @@
+# Editing primers and notes (synthetic), as saved into .dna files.
+{"command": "new", "params": {"name": "pNotes", "residues": "ACGTTGCAAGGCTTACGATCGGATCCTTAGGCATGCAAGCTT", "topology": "circular"}}
+{"command": "add_primer", "params": {"name": "fwd", "residues": "ACGTTGCAAGGCTTAC"}, "expect": {"path": "/id", "eq": 1}}
+{"note": "rename and resequence; what isn't given stays", "command": "edit_primer", "params": {"id": 1, "name": "fwd2", "residues": "TTGCAAGGCTTACGATCG"}}
+{"method": "doc.get", "params": {"residues": false}, "expect": [{"path": "/molecule/primers/0/name", "eq": "fwd2"}, {"path": "/molecule/primers/0/seq/residues", "eq": "TTGCAAGGCTTACGATCG"}]}
+{"command": "set_notes", "params": {"description": "a test construct", "fields": {"Organism": "E. coli", "CreatedBy": "Lab"}}}
+{"command": "set_notes", "params": {"fields": {"Organism": null}}, "expect": {"path": "/fields", "eq": {"CreatedBy": "Lab"}}}
+{"note": "the description is set on its own", "command": "set_notes", "params": {"fields": {"Description": "x"}}, "expect_error": "invalid_params"}
+{"note": "bad primer sequence", "command": "edit_primer", "params": {"id": 1, "residues": "MKV!"}, "expect_error": "invalid_input"}
+{"command": "edit_primer", "params": {"id": 9, "name": "x"}, "expect_error": "not_found"}

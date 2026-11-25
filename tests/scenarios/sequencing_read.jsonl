@@ -1,0 +1,9 @@
+# A sequencing read (synthetic .ab1): open it, check its quality, trim the poor ends, undo, then align it to the construct it was read from.
+{"command": "open", "params": {"path": "../../tests/scenarios/data/read1.ab1"}, "expect": {"path": "/length", "eq": 48}}
+{"command": "trace_info", "params": {}, "expect": [{"path": "/sample_name", "eq": "read 1 fwd"}, {"path": "/trim/start", "eq": 4}, {"path": "/trim/end", "eq": 44}, {"path": "/quality/q20", "eq": 40}]}
+{"command": "trace_trim", "params": {}, "expect": [{"path": "/removed_start", "eq": 4}, {"path": "/removed_end", "eq": 4}, {"path": "/length", "eq": 40}]}
+{"command": "get_residues", "params": {"range": {"start": 0, "end": 7}}, "expect": {"path": "/residues", "eq": "GATTACA"}}
+{"command": "undo", "params": {}}
+{"command": "trace_info", "params": {"from": 0, "to": 2}, "expect": [{"path": "/calls/0/base", "eq": "N"}, {"path": "/calls/0/quality", "eq": 4}, {"path": "/calls/1/peak", "eq": 18}]}
+{"command": "new", "params": {"name": "pTemplate", "residues": "GATTACAGATTACACCGTTGCATGCAAGCTTGGCACTGGCCGTCGTTTTACAACG"}}
+{"note": "the read's poor ends are trimmed before aligning, so the rest matches exactly", "command": "align_to_reference", "params": {"file": "../../tests/scenarios/data/read1.ab1"}, "expect": [{"path": "/identity", "eq": 1.0}, {"path": "/trimmed/start", "eq": 4}, {"path": "/start", "eq": 0}, {"path": "/end", "eq": 40}]}

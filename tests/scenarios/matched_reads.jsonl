@@ -1,0 +1,6 @@
+# A construct with a sequencing read matched to it in its .dna file (synthetic): list the read, check it against the construct, open it with its trace.
+{"command": "open", "params": {"path": "../../tests/scenarios/data/matched.dna"}, "expect": {"path": "/matched_reads", "eq": 1}}
+{"command": "matched_reads", "params": {}, "expect": [{"path": "/reads/0/name", "eq": "read 1"}, {"path": "/reads/0/trace", "eq": true}, {"path": "/reads/0/length", "eq": 30}]}
+{"note": "the read covers bases 11-40 and has an A at base 21", "command": "check_reads", "params": {"matched": true}, "expect": [{"path": "/reads/0/start", "eq": 10}, {"path": "/reads/0/end", "eq": 40}, {"path": "/findings/0/position", "eq": 20}, {"path": "/findings/0/query", "eq": "A"}, {"path": "/findings/0/verdict", "eq": "one_read"}]}
+{"command": "open_matched_read", "params": {"index": 0}, "expect": {"path": "/trace", "eq": true}}
+{"command": "trace_info", "params": {}, "expect": [{"path": "/length", "eq": 30}, {"path": "/quality/q30", "eq": 30}]}

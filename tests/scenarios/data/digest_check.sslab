@@ -1,0 +1,59 @@
+{
+  "format": "snappiesnap-experiment",
+  "version": 1,
+  "generator": "SnappieSnap 0.6.0",
+  "kind": "gel",
+  "name": "Digest check",
+  "gel": {
+    "agarose": 2.0,
+    "ladder": "100 bp"
+  },
+  "constructs": [
+    {
+      "name": "pExp",
+      "file": "pExp.gb",
+      "original_path": "tests/scenarios/data/pExp.gb",
+      "length": 60,
+      "topology": "circular",
+      "fingerprint": "fnv1a64:7466b1f004b64a12",
+      "genbank": "LOCUS       pExp                      60 bp    DNA     circular SYN\nDEFINITION  Synthetic test construct for the experiment scenario.\nACCESSION   .\nVERSION     .\nKEYWORDS    .\nSOURCE      synthetic DNA construct\n  ORGANISM  synthetic DNA construct\nFEATURES             Location/Qualifiers\n     source          1..60\n                     /mol_type=\"other DNA\"\n                     /organism=\"synthetic DNA construct\"\n     misc_feature    7..18\n                     /label=insert\nORIGIN\n        1 aaaaaagaat tcccccgggg ggatccaaaa aaaaaaaaaa aaaagaattc aaaaaaaaaa\n//\n"
+    },
+    {
+      "name": "pLinear",
+      "length": 41,
+      "topology": "linear",
+      "fingerprint": "fnv1a64:482ac0cae691a3ed",
+      "genbank": "LOCUS       pLinear                   41 bp    DNA     linear   SYN\nDEFINITION  .\nACCESSION   .\nVERSION     .\nKEYWORDS    .\nSOURCE      synthetic DNA construct\n  ORGANISM  synthetic DNA construct\nFEATURES             Location/Qualifiers\n     source          1..41\n                     /mol_type=\"other DNA\"\n                     /organism=\"synthetic DNA construct\"\nORIGIN\n        1 gggggggggg gaattctttt tttttttttt tttttttttt t\n//\n"
+    }
+  ],
+  "lanes": [
+    {
+      "construct": 0,
+      "method": {
+        "kind": "uncut"
+      }
+    },
+    {
+      "construct": 0,
+      "method": {
+        "kind": "digest",
+        "enzymes": [
+          "EcoRI"
+        ]
+      }
+    },
+    {
+      "construct": 1,
+      "method": {
+        "kind": "digest",
+        "enzymes": [
+          "EcoRI"
+        ]
+      }
+    },
+    {
+      "construct": 1,
+      "method": null
+    }
+  ]
+}

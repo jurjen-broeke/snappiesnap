@@ -1,0 +1,12 @@
+# Images for `cross build` in the release workflow's package jobs (docs/packaging.md).
+#
+# Linux: the CentOS 7 variant (glibc 2.17), so the binaries run on every distribution the .deb
+# and .rpm promise (libc6 >= 2.28: Debian 10+, Ubuntu 20.04+, RHEL/Alma/Rocky 8+). The plain
+# image is built on a newer Ubuntu and its binaries need a newer glibc. The package job checks
+# the glibc symbols the binaries need, so a changed image can't slip through unnoticed.
+[target.x86_64-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"
+
+# Windows: MinGW-w64 (no Microsoft SDK licence needed); its windres embeds the icon.
+[target.x86_64-pc-windows-gnu]
+image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:main"

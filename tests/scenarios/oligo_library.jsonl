@@ -1,0 +1,11 @@
+# The lab's oligo library (synthetic list): import, find the oligos that bind a construct, add them as primers.
+{"command": "oligo_library_import", "params": {"path": "../../tests/scenarios/data/lab_oligos.txt", "replace": true}, "expect": [{"path": "/added", "eq": 4}, {"path": "/skipped_count", "eq": 0}]}
+{"command": "new", "params": {"name": "pOligo", "residues": "AAAAAAAAAAGGCTAGCTAGGATCCATCGAAAAAAAAAACCCCCCCCCCTGACTGATGCATGGACTACGCCCCCCCCCC", "topology": "circular"}}
+{"note": "seqF reads forward first; the tailed oligo (forward) and seqR (reverse) bind the same later stretch; 'elsewhere' doesn't bind", "command": "oligo_library_find", "params": {}, "expect": [{"path": "/library", "eq": 4}, {"path": "/oligos", "len": 3}, {"path": "/oligos/0/name", "eq": "seqF"}, {"path": "/oligos/0/sites/0/strand", "eq": "forward"}, {"path": "/oligos/0/sites/0/range/start", "eq": 10}]}
+{"command": "oligo_library_add", "params": {"names": ["seqF", "tailed"]}, "expect": {"path": "/added", "len": 2}}
+{"method": "doc.get", "expect": [{"path": "/molecule/primers", "len": 2}, {"path": "/molecule/primers/1/seq/residues", "eq": "gaattcTGACTGATGCATGGACTACG"}]}
+{"note": "added ones are marked", "command": "oligo_library_find", "params": {}, "expect": {"path": "/oligos/0/in_molecule", "eq": true}}
+{"command": "undo", "params": {}}
+{"method": "doc.get", "expect": {"path": "/molecule/primers", "len": 0}}
+{"note": "a folder of one-primer files: each named after its file, the .dna beside them left alone", "command": "oligo_library_import", "params": {"path": "../../tests/scenarios/data/lab_primers", "replace": true}, "expect": [{"path": "/added", "eq": 2}, {"path": "/files", "eq": 2}, {"path": "/skipped_count", "eq": 0}]}
+{"command": "oligo_library_list", "params": {}, "expect": [{"path": "/total", "eq": 2}, {"path": "/oligos/0/name", "eq": "SP_101"}, {"path": "/oligos/1/name", "eq": "SP_102"}, {"path": "/oligos/1/residues", "eq": "gaattcTGACTGATGCATGGACTACG"}]}

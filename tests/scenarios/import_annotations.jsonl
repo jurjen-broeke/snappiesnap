@@ -1,0 +1,8 @@
+// GFF3 annotations without a sequence, added to an open document (synthetic data only).
+{"note": "a 20 bp circular sequence", "command": "new", "params": {"name": "demo", "residues": "ACGTACGTACGTACGTACGT", "topology": "circular"}}
+{"note": "two rows fit (one across the origin); one lies outside the sequence", "command": "import_annotations", "params": {"path": "../../tests/scenarios/data/annotations.gff3"}, "expect": [{"path": "/seqid", "eq": "demo"}, {"path": "/added", "eq": 2}, {"path": "/warnings", "len": 1}]}
+{"note": "importing again adds nothing", "command": "import_annotations", "params": {"path": "../../tests/scenarios/data/annotations.gff3"}, "expect": [{"path": "/added", "eq": 0}, {"path": "/skipped", "eq": 2}]}
+{"note": "the CDS wraps past the origin", "method": "doc.get", "params": {}, "expect": [{"path": "/molecule/features", "len": 2}, {"path": "/molecule/features/1/segments/0/range/start", "eq": 14}, {"path": "/molecule/features/1/segments/0/range/end", "eq": 4}]}
+{"note": "one undo removes the import", "command": "undo", "params": {}}
+{"method": "doc.get", "params": {}, "expect": [{"path": "/molecule/features", "len": 0}]}
+{"note": "a file that isn't GFF3", "command": "import_annotations", "params": {"path": "../../tests/scenarios/README.md"}, "expect_error": "invalid_params"}

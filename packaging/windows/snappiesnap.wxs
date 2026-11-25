@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SnappieSnap .msi, built on Linux with wixl (msitools), WiX 3 syntax.
+  Per-machine install into Program Files (for managed deployment by IT); the .exe installer is
+  the per-user alternative. SnappieSnap's own files live in each user's %APPDATA%\SnappieSnap.
+  wixl -a x64 -D Version=0.0.1 -D Src=target/x86_64-pc-windows-gnu/release -o out.msi snappiesnap.wxs
+  The UpgradeCode must never change: it is how Windows recognises newer versions.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="SnappieSnap" Language="1033" Version="$(var.Version)"
+           Manufacturer="SnappieSnap contributors" UpgradeCode="330E8EE5-B164-4E45-990C-F192A3A4EF66">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="SnappieSnap installer" Comments="Molecular biology sequence editor"/>
+    <Media Id="1" Cabinet="snappiesnap.cab" EmbedCab="yes"/>
+    <Property Id="ARPCONTACT" Value="SnappieSnap contributors"/>
+    <Icon Id="SnappieSnap.ico" SourceFile="assets/brand/icons/windows/snappiesnap.ico"/>
+    <Property Id="ARPPRODUCTICON" Value="SnappieSnap.ico"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="SnappieSnap">
+          <Component Id="App" Guid="6D70AA31-6273-46DE-A93E-5ED8F8C30BCF" Win64="yes">
+            <File Id="AppExe" Name="snappiesnap.exe" Source="$(var.Src)/snappiesnap.exe" KeyPath="yes"/>
+            <File Id="CliExe" Name="snappiesnap-cli.exe" Source="$(var.Src)/snappiesnap-cli.exe"/>
+            <File Id="Readme" Name="README.txt" Source="README.md"/>
+            <File Id="Attribution" Name="ATTRIBUTION.txt" Source="ATTRIBUTION.md"/>
+            <File Id="LicenseMit" Name="LICENSE-MIT.txt" Source="LICENSE-MIT"/>
+            <File Id="LicenseApache" Name="LICENSE-APACHE.txt" Source="LICENSE-APACHE"/>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="Shortcut" Guid="DDAE4A25-231A-4045-9348-807BB4F833A3" Win64="yes">
+          <Shortcut Id="StartMenu" Name="SnappieSnap" Target="[INSTALLDIR]snappiesnap.exe"
+                    WorkingDirectory="INSTALLDIR"/>
+          <RegistryValue Root="HKLM" Key="Software\SnappieSnap" Name="StartMenuShortcut"
+                         Type="integer" Value="1" KeyPath="yes"/>
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="App"/>
+      <ComponentRef Id="Shortcut"/>
+    </Feature>
+  </Product>
+</Wix>

@@ -1,0 +1,6 @@
+# Go to a range by its numbers (1-based, inclusive, across the origin of a circle) and describe the selection.
+{"command": "new", "params": {"name": "pNav", "residues": "GGGGCCCCAAAATTTTACGTACGT", "topology": "circular"}}
+{"command": "go_to", "params": {"location": "5-8"}, "expect": [{"path": "/selection/start", "eq": 4}, {"path": "/selection/end", "eq": 8}]}
+{"note": "CCCC: 4 x 289.18 - 61.96 (OligoCalc)", "command": "sequence_info", "params": {}, "expect": [{"path": "/gc_percent", "eq": 100.0}, {"path": "/weight/single_strand", "eq": 1094.76}]}
+{"command": "go_to", "params": {"location": "21 to 4"}, "expect": {"path": "/length", "eq": 8}}
+{"command": "go_to", "params": {"location": "0"}, "expect_error": "invalid_input"}

@@ -1,0 +1,21 @@
+# Local-only planning notes and dev log. Never commit.
+/plan/
+/log/
+
+# Test corpus: a developer's own working files, for local tests only. Never commit.
+/corpus/
+
+# Build output (including per-agent target dirs). `target/` is not anchored: a tool run from
+# a crate's own folder (trunk, in apps/snappiesnap-web) can make one there too.
+/target/
+target/
+/dist/
+
+# OS / editor noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# A locally cached crate registry, if one is set up here.
+/.cargo-registry/

@@ -1,0 +1,18 @@
+# A feature across the origin of a circular plasmid stays on its residues through every edit.
+{"command": "new", "params": {"name": "pCirc", "residues": "AAAACCCCGGGGTTTTACGT", "topology": "circular"}}
+{"command": "add_feature", "params": {"feature": {"name": "ori-span", "kind": "rep_origin", "strand": "forward", "segments": [{"range": {"start": 16, "end": 4}}]}}, "expect": {"path": "/id", "eq": 1}}
+{"command": "get_residues", "params": {"range": {"start": 16, "end": 4}}, "expect": {"path": "/residues", "eq": "ACGTAAAA"}}
+{"note": "inserting at the origin is inside a wrapping feature", "command": "insert", "params": {"at": 0, "residues": "GG"}}
+{"method": "doc.get", "params": {"residues": false}, "expect": [{"path": "/molecule/features/0/segments/0/range/start", "eq": 18}, {"path": "/molecule/features/0/segments/0/range/end", "eq": 6}]}
+{"command": "get_residues", "params": {"range": {"start": 18, "end": 6}}, "expect": {"path": "/residues", "eq": "ACGTGGAAAA"}}
+{"note": "linearising is refused while a feature spans the origin", "command": "set_topology", "params": {"topology": "linear"}, "expect_error": "invalid_input"}
+{"command": "rotate_origin", "params": {"origin": 18}}
+{"method": "doc.get", "params": {"residues": false}, "expect": [{"path": "/molecule/features/0/segments/0/range/start", "eq": 0}, {"path": "/molecule/features/0/segments/0/range/end", "eq": 10}]}
+{"command": "set_topology", "params": {"topology": "linear"}}
+{"command": "rotate_origin", "params": {"origin": 1}, "expect_error": "invalid_input"}
+{"command": "set_topology", "params": {"topology": "circular"}}
+{"note": "reverse complement flips the strand and keeps the residues", "command": "reverse_complement"}
+{"method": "doc.get", "params": {"residues": false}, "expect": [{"path": "/molecule/features/0/strand", "eq": "reverse"}, {"path": "/molecule/features/0/segments/0/range/start", "eq": 12}, {"path": "/molecule/features/0/segments/0/range/end", "eq": 22}]}
+{"command": "get_residues", "params": {"range": {"start": 12, "end": 22}}, "expect": {"path": "/residues", "eq": "TTTTCCACGT"}}
+{"note": "deleting everything a feature covers removes it and reports its id", "command": "delete", "params": {"range": {"start": 10, "end": 22}}, "expect": {"path": "/removed_features", "eq": [1]}}
+{"method": "doc.get", "expect": {"path": "/molecule/features", "len": 0}}

@@ -1,0 +1,31 @@
+{
+  "background_color": "#ecf8ff",
+  "display": "standalone",
+  "icons": [
+    {
+      "sizes": "any",
+      "src": "favicon.svg",
+      "type": "image/svg+xml"
+    },
+    {
+      "sizes": "192x192",
+      "src": "icon-192.png",
+      "type": "image/png"
+    },
+    {
+      "sizes": "512x512",
+      "src": "icon-512.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "maskable",
+      "sizes": "512x512",
+      "src": "icon-maskable-512.png",
+      "type": "image/png"
+    }
+  ],
+  "name": "SnappieSnap",
+  "short_name": "SnappieSnap",
+  "start_url": ".",
+  "theme_color": "#18bc18"
+}

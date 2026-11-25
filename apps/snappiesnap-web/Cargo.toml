@@ -1,0 +1,21 @@
+[package]
+name = "snappiesnap-web"
+description = "SnappieSnap: the app in the browser (WebAssembly; build with trunk)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+snappiesnap-engine.workspace = true
+snappiesnap-ui-egui.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = ["Document", "Element", "HtmlCanvasElement", "HtmlElement", "Window"] }
+
+[lints]
+workspace = true

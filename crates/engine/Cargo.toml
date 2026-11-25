@@ -1,0 +1,30 @@
+[package]
+name = "snappiesnap-engine"
+description = "SnappieSnap L4: Session, command registry, undo/redo and the last-resort panic guard. Every action is a command."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Tests over the local, never-committed corpus in `corpus/` (`cargo xtask corpus-test`).
+corpus = []
+
+[dependencies]
+snappiesnap-seq.workspace = true
+snappiesnap-formats.workspace = true
+snappiesnap-doc.workspace = true
+snappiesnap-bio.workspace = true
+snappiesnap-layout.workspace = true
+snappiesnap-render.workspace = true
+snappiesnap-io.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+lzma-rs.workspace = true
+
+[lints]
+workspace = true

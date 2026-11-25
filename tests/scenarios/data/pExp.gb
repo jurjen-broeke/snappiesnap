@@ -1,0 +1,8 @@
+LOCUS       pExp                      60 bp    DNA     circular SYN 01-NOV-2026
+DEFINITION  Synthetic test construct for the experiment scenario.
+FEATURES             Location/Qualifiers
+     misc_feature    7..18
+                     /label=insert
+ORIGIN
+        1 aaaaaagaat tcccccgggg ggatccaaaa aaaaaaaaaa aaaagaattc aaaaaaaaaa
+//

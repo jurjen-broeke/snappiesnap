@@ -1,0 +1,15 @@
+[package]
+name = "snappiesnap-layout"
+description = "SnappieSnap L2: Geometry for map and sequence views (angles, feature lanes, label placement). No drawing."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+snappiesnap-seq.workspace = true
+snappiesnap-doc.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,105 @@
+{
+ "about": "Vector records SnappieSnap offers to download on request (feature_library_download) to build a library on the user's computer. Many were submitted by suppliers, who may hold rights in them; the records are never shipped. Accessions only; the records come from NCBI at download time.",
+ "records": [
+  {
+   "accession": "M77789",
+   "name": "pUC19"
+  },
+  {
+   "accession": "L08752",
+   "name": "pUC18"
+  },
+  {
+   "accession": "X52328",
+   "name": "pBluescript II SK(+)"
+  },
+  {
+   "accession": "X52327",
+   "name": "pBluescript II KS(+)"
+  },
+  {
+   "accession": "X52325",
+   "name": "pBluescript SK(+)"
+  },
+  {
+   "accession": "X70275",
+   "name": "pUC18/f1 derivative"
+  },
+  {
+   "accession": "L08776",
+   "name": "pACYC177"
+  },
+  {
+   "accession": "M77749",
+   "name": "pKK223-3"
+  },
+  {
+   "accession": "X81837",
+   "name": "pBAD24"
+  },
+  {
+   "accession": "X81838",
+   "name": "pBAD18"
+  },
+  {
+   "accession": "U78872",
+   "name": "pGEX-6P-1"
+  },
+  {
+   "accession": "EU196354",
+   "name": "pKLAC2"
+  },
+  {
+   "accession": "U47120",
+   "name": "pCI-neo"
+  },
+  {
+   "accession": "U47295",
+   "name": "pGL3-Basic"
+  },
+  {
+   "accession": "U47296",
+   "name": "pGL3-Control"
+  },
+  {
+   "accession": "AY738222",
+   "name": "pGL4.10[luc2]"
+  },
+  {
+   "accession": "AF025846",
+   "name": "pRL-TK"
+  },
+  {
+   "accession": "AF025845",
+   "name": "pRL-SV40"
+  },
+  {
+   "accession": "U55762",
+   "name": "pEGFP-N1"
+  },
+  {
+   "accession": "U55763",
+   "name": "pEGFP-C1"
+  },
+  {
+   "accession": "U89930",
+   "name": "pTet-On"
+  },
+  {
+   "accession": "AF063585",
+   "name": "pESC-URA"
+  },
+  {
+   "accession": "AF396260",
+   "name": "pAAV-MCS"
+  },
+  {
+   "accession": "MK297322",
+   "name": "pNZ8048"
+  },
+  {
+   "accession": "MN996867",
+   "name": "pcDNA3.1(+)"
+  }
+ ]
+}

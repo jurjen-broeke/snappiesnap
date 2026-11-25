@@ -1,0 +1,25 @@
+[package]
+name = "snappiesnap-io"
+description = "SnappieSnap L3: Mapping between documents and file formats, the native format, and import reports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Tests over the local, never-committed corpus in `corpus/` (`cargo xtask corpus-test`).
+corpus = []
+
+[dependencies]
+serde.workspace = true
+snappiesnap-bio.workspace = true
+snappiesnap-doc.workspace = true
+snappiesnap-formats.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
