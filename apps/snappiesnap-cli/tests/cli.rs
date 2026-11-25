@@ -166,17 +166,36 @@ fn convert_between_formats() {
     let dir = std::env::temp_dir().join(format!("snappiesnap-convert-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let p = |name: &str| dir.join(name).to_string_lossy().into_owned();
-    let script = format!(
-        "{{\"command\": \"new\", \"params\": {{\"name\": \"pConv\", \"residues\": \"ACGTACGTACGTACGTACGT\", \"topology\": \"circular\"}}}}\n\
-         {{\"command\": \"add_feature\", \"params\": {{\"feature\": {{\"name\": \"f\", \"kind\": \"CDS\", \"strand\": \"forward\", \"segments\": [{{\"range\": {{\"start\": 18, \"end\": 3}}}}]}}}}}}\n\
-         {{\"command\": \"save\", \"params\": {{\"path\": \"{}\"}}}}\n",
-        p("a.dna")
-    );
-    assert!(
-        cli(&["run", "--script", "-", "--quiet"], &script)
-            .status
-            .success()
-    );
+    // Built with serde_json, never by formatting a path into JSON text: a Windows path is full
+    // of backslashes, and `C:\Users\...` written straight into a JSON string is invalid JSON
+    // (`\U` is not an escape), so the script would not parse there.
+    let script = [
+        serde_json::json!({
+            "command": "new",
+            "params": {
+                "name": "pConv",
+                "residues": "ACGTACGTACGTACGTACGT",
+                "topology": "circular",
+            }
+        }),
+        serde_json::json!({
+            "command": "add_feature",
+            "params": {
+                "feature": {
+                    "name": "f",
+                    "kind": "CDS",
+                    "strand": "forward",
+                    "segments": [{ "range": { "start": 18, "end": 3 } }],
+                }
+            }
+        }),
+        serde_json::json!({ "command": "save", "params": { "path": p("a.dna") } }),
+    ]
+    .iter()
+    .map(|step| serde_json::to_string(step).unwrap() + "\n")
+    .collect::<String>();
+    let r = cli(&["run", "--script", "-", "--quiet"], &script);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
     let r = cli(&["convert", &p("a.dna"), &p("b.gb")], "");
     assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
     let gb = std::fs::read_to_string(p("b.gb")).unwrap();
