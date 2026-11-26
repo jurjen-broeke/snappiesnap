@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.40.1 (2026-11-26)
+
+### Fixed
+
+- **On Windows, `SNAPPIESNAP_DATA` and `SNAPPIESNAP_SETTINGS` were ignored when set to a path starting with `/`** (such as `/data/snappiesnap`), and SnappieSnap quietly used its usual folder in `%APPDATA%` instead. Such a path is rooted, not relative, and is now honoured as the documentation says.
+
 ## 0.40.0 (2026-11-25)
 
 ### Added

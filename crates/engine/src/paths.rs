@@ -44,17 +44,28 @@ fn absolute(env: &dyn Fn(&str) -> Option<OsString>, name: &str) -> Option<PathBu
 }
 
 /// Absolute on any OS's terms: `/…`, or a Windows drive or UNC path.
+///
+/// Decided from the path's own text, never from the host's rules, so a location computed for
+/// one [`Os`] is the same on every platform. `Path::is_absolute` cannot do this: on Windows it
+/// rejects `/Users/ann`, which would make a macOS location depend on the machine working it
+/// out, and would silently ignore a rooted `SNAPPIESNAP_DATA` on Windows.
 fn is_absolute(path: &std::path::Path) -> bool {
-    if path.is_absolute() {
-        return true;
-    }
     let s = path.to_string_lossy();
     let b = s.as_bytes();
-    s.starts_with("\\\\")
-        || (b.len() >= 3
-            && b.first().is_some_and(u8::is_ascii_alphabetic)
-            && b.get(1) == Some(&b':')
-            && matches!(b.get(2), Some(b'\\' | b'/')))
+    // Rooted: POSIX `/…`, and on Windows a UNC path, a verbatim prefix or a drive-rooted `\…`.
+    if matches!(b.first(), Some(b'/' | b'\\')) {
+        return true;
+    }
+    // A Windows drive: `C:\…` or `C:/…`. `C:x` is relative to that drive's own folder.
+    if b.len() >= 3
+        && b.first().is_some_and(u8::is_ascii_alphabetic)
+        && b.get(1) == Some(&b':')
+        && matches!(b.get(2), Some(b'\\' | b'/'))
+    {
+        return true;
+    }
+    // Anything else the host considers absolute.
+    path.is_absolute()
 }
 
 /// The user's own application folder (shared by data and, on macOS and Windows, settings).
@@ -119,6 +130,29 @@ mod tests {
                 .iter()
                 .find(|(k, _)| *k == name)
                 .map(|(_, v)| OsString::from(*v))
+        }
+    }
+
+    /// Absoluteness is read from the path's text, not the host's rules: the same answer on
+    /// Linux, macOS and Windows. Without this, a location worked out for one OS would depend on
+    /// the machine working it out, and a rooted override would be dropped on Windows.
+    #[test]
+    fn absolute_paths_are_judged_the_same_on_every_host() {
+        for yes in [
+            "/Users/ann",
+            "/home/ann",
+            "/",
+            r"C:\Users\ann",
+            "C:/Users/ann",
+            r"c:\x",
+            r"\\server\share\x",
+            r"\\?\C:\x",
+            r"\Users\ann",
+        ] {
+            assert!(is_absolute(std::path::Path::new(yes)), "{yes}");
+        }
+        for no in ["", "data", "rel/x", r"rel\x", "C:x", "./x", "../x", "~/x"] {
+            assert!(!is_absolute(std::path::Path::new(no)), "{no}");
         }
     }
 
