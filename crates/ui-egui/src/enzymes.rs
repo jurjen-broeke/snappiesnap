@@ -553,7 +553,9 @@ pub fn primer_marks(
                 name: p.name.clone(),
                 range: b.range,
                 forward: b.strand == PrimerStrand::Forward,
-                primary: b.is_primary(p.seq.len()) || b.anneals_whole_primer(p.seq.len()),
+                primary: b.is_primary(p.seq.len())
+                    || b.is_primary_with_one_mismatch(p.seq.len())
+                    || b.anneals_whole_primer(p.seq.len()),
                 annealed: b.annealed,
                 mismatches: b.mismatches,
                 five_prime_only: b.five_prime_only,

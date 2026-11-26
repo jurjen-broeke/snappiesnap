@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.42.1 (2026-11-26)
+
+### Fixed
+
+- **A primer with one mismatch is shown where it binds.** A primer carrying a single changed base, such as a point mutation, often wasn't shown at all: the minimum Tm was checked against only the longest perfectly paired stretch, half the primer, which melts too low. A primer that pairs over at least 15 bases (or its whole length) with one mismatch at least 5 bases from its 3' end now always counts, on short and long sequences alike. The changed base steps out of the primer's row, away from the strand, so it stands out at a glance. A mismatch closer to the 3' end still has to meet the minimum Tm, since it hinders extension the most. PCR simulation still uses only perfectly paired sites by default; when it includes weaker sites, it now primes from these too, as in mutagenesis PCR.
+
 ## 0.42.0 (2026-11-26)
 
 ### Added

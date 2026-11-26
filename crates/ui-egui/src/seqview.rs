@@ -297,7 +297,9 @@ impl Metrics {
         } else {
             0
         };
-        let extra = (primer_rows.0 + primer_rows.1) as f32 * line_h + orf_rows as f32 * ORF_ROW_H;
+        let extra = primer_block_h(primer_rows.0, line_h)
+            + primer_block_h(primer_rows.1, line_h)
+            + orf_rows as f32 * ORF_ROW_H;
         let cds_h = if layers.features && translated {
             AA_ROW_H
         } else {
@@ -334,12 +336,12 @@ impl Metrics {
 
     /// Height of the forward primer rows, between the site names and the top strand.
     fn forward_primers_h(&self) -> f32 {
-        self.primer_rows.0 as f32 * self.line_h
+        primer_block_h(self.primer_rows.0, self.line_h)
     }
 
     /// Height of the reverse primer rows, between the bottom strand and the features.
     fn reverse_primers_h(&self) -> f32 {
-        self.primer_rows.1 as f32 * self.line_h
+        primer_block_h(self.primer_rows.1, self.line_h)
     }
 
     /// Width of the whole line, gutter included (single-line mode: the scrolled content).
@@ -359,6 +361,16 @@ impl Metrics {
         let group = (rel / group_w).floor() as usize;
         let within = ((rel - group as f32 * group_w) / self.char_w).round() as usize;
         (group * 10 + within.min(10)).min(self.per_line)
+    }
+}
+
+/// Height of `rows` primer rows on one strand's side, with room on the outer side for a base
+/// that doesn't pair to step out of the outermost row.
+fn primer_block_h(rows: usize, line_h: f32) -> f32 {
+    if rows == 0 {
+        0.0
+    } else {
+        rows as f32 * line_h + MISMATCH_JOG
     }
 }
 

@@ -203,10 +203,13 @@ fn three_prime(s: &BindingSite) -> (PrimerStrand, usize) {
 }
 
 /// Binding sites of `primers` (5'->3') on `m` under the user's [`BindingPrefs`]: each primer's
-/// sites under the rules for `m`'s length ([`BindingPrefs::rules_for`]), plus its primary sites (which replace a
-/// site found with the same 3' end), plus with `five_prime_on` its 5'-end-only sites
-/// ([`five_prime_sites`]) where no site places the primer already, less those under the
-/// minimum Tm in `conditions`. Ordered by primer, strand, position.
+/// sites under the rules for `m`'s length ([`BindingPrefs::rules_for`]), plus its primary
+/// sites and sites that are primary but for one mismatch
+/// ([`BindingSite::is_primary_with_one_mismatch`]) (which replace a site found with the same
+/// 3' end), plus with `five_prime_on` its 5'-end-only sites ([`five_prime_sites`]) where no
+/// site places the primer already, less those under the minimum Tm in `conditions` (primary
+/// sites and one-mismatch ones are kept whatever their Tm). Ordered by primer, strand,
+/// position.
 pub fn sites_with_prefs(
     m: &Molecule,
     primers: &[&[u8]],
@@ -220,12 +223,28 @@ pub fn sites_with_prefs(
         let n = primer.len();
         let mut mine = binding_sites(m, &[primer], class.rules());
         // A primer is meant to bind where it was designed to, so its primary site counts even
-        // under rules that would miss it. Where both sets of rules find the same 3' end, keep
-        // whichever anneals further: the stricter rules can only stop sooner, never show more.
-        for site in binding_sites(m, &[primer], BindingRules::default()) {
-            if !site.is_primary(n) {
-                continue;
-            }
+        // under rules that would miss it, and so does that site with one base changed. Where
+        // both sets of rules find the same 3' end, keep whichever anneals further: the
+        // stricter rules can only stop sooner, never show more.
+        let meant = BindingRules {
+            isolated: true,
+            ..BindingRules::default()
+        };
+        // The short-template defaults are these rules: no need to search twice.
+        let one_change = if class.rules() == meant {
+            mine.clone()
+        } else {
+            binding_sites(m, &[primer], meant)
+        };
+        for site in binding_sites(m, &[primer], BindingRules::default())
+            .into_iter()
+            .filter(|s| s.is_primary(n))
+            .chain(
+                one_change
+                    .into_iter()
+                    .filter(|s| s.is_primary_with_one_mismatch(n)),
+            )
+        {
             let end = three_prime(&site);
             if mine
                 .iter()
@@ -245,6 +264,7 @@ pub fn sites_with_prefs(
         }
         mine.retain(|s| {
             s.is_primary(n)
+                || s.is_primary_with_one_mismatch(n)
                 || !class.min_tm_on
                 || s.tm(primer, conditions).is_some_and(|t| t >= class.min_tm)
         });
@@ -331,6 +351,22 @@ impl BindingSite {
         self.mismatches == 0 && self.annealed >= primer_len.min(15)
     }
 
+    /// A site where the primer pairs over at least 15 bases (or its whole length, if shorter)
+    /// with exactly one mismatch, at least [`ONE_CHANGE_FROM_3`] bases from its 3' end: where
+    /// it is meant to bind, carrying one change (a point mutation, a typo in an order, a SNP in
+    /// the template). A mismatch near the 3' end hinders extension most, so such a site stays
+    /// a weak one, subject to the minimum Tm; the threshold is a conservative choice of ours,
+    /// not a published constant. Like
+    /// a primary site it is shown and kept whatever the minimum Tm, since the Tm of its longest
+    /// perfectly paired stretch ([`BindingSite::tm`]) badly underrates a primer broken in two by
+    /// one base; unlike one it makes no PCR product ([`BindingSite::is_primary`]).
+    pub fn is_primary_with_one_mismatch(&self, primer_len: usize) -> bool {
+        !self.five_prime_only
+            && self.mismatches == 1
+            && self.mismatch_at.iter().all(|&d| d >= ONE_CHANGE_FROM_3)
+            && self.annealed >= primer_len.min(15)
+    }
+
     /// Whether the primer pairs along its whole length here, mismatches and all: a repair or
     /// mutagenesis oligo at the site it was designed for. A chance site almost never anneals
     /// over a primer's entire length, so this says "drawn as a real binding site" without
@@ -339,6 +375,10 @@ impl BindingSite {
         primer_len > 0 && self.annealed == primer_len
     }
 }
+
+/// Closest to the 3' end (as a distance: 0 is the 3' base) that the one mismatch of a
+/// [`BindingSite::is_primary_with_one_mismatch`] site may be.
+pub const ONE_CHANGE_FROM_3: usize = 5;
 
 /// Bit mask of the bases an IUPAC code stands for (A=1, C=2, G=4, T=8).
 fn mask(b: u8) -> u8 {
@@ -671,6 +711,70 @@ mod tests {
     /// A repair oligo carries the changes it is meant to make, so it pairs along its whole
     /// length with several isolated mismatches in it. A synthetic pair in the shape of a real
     /// repair design: 100 bases, with mismatches 49, 74 and 79 from the 3' end.
+    /// A primer carrying one change in its middle binds where it was designed to, even when
+    /// each half on its own melts below the minimum Tm (as an AT-rich 20-mer's do). Before
+    /// such sites were kept, it was shown nowhere.
+    #[test]
+    fn a_primer_with_one_mismatch_still_binds_its_site() {
+        let c = crate::tm::TmConditions::default();
+        // Synthetic: G/C-poor flanks around an AT-rich 20-base binding site at 20..40.
+        let site = "GATTATTGACGACTTCAATA";
+        let template = format!("CCCCCCCCCCGGGGGGGGGG{site}GGGGGGGGGGCCCCCCCCCC");
+        let m = mol(&template, Topology::Linear);
+        // The 11th base changed (A -> C): 9 paired bases on the 3' side, 10 on the 5' side.
+        let changed = "GATTATTGACCACTTCAATA";
+        let halves = [&changed[..10], &changed[11..]];
+        for h in halves {
+            let t = crate::tm::tm(h.as_bytes(), &c).expect("a Tm");
+            assert!(
+                t < 40.0,
+                "{h} melts at {t:.1} °C, under the default minimum"
+            );
+        }
+        let check = |m: &Molecule, prefs: &BindingPrefs, primer: &str, strand: PrimerStrand| {
+            let sites = sites_with_prefs(m, &[primer.as_bytes()], prefs, &c);
+            let s = sites
+                .iter()
+                .find(|s| s.strand == strand)
+                .unwrap_or_else(|| panic!("{primer} should bind on the {strand:?} strand"));
+            assert_eq!(
+                (s.range, s.annealed, s.mismatches),
+                (Range::new(20, 40), 20, 1)
+            );
+            assert_eq!(s.mismatch_at, vec![9]);
+            assert!(s.is_primary_with_one_mismatch(20));
+            assert!(!s.is_primary(20), "it makes no PCR product");
+        };
+        check(&m, &BindingPrefs::default(), changed, PrimerStrand::Forward);
+        // The same as a reverse primer: the change is again 9 bases from its 3' end.
+        let reverse = rc(&template[20..40]);
+        let reverse_changed = format!("{}{}{}", &reverse[..10], "C", &reverse[11..]);
+        assert_ne!(reverse, reverse_changed);
+        check(
+            &m,
+            &BindingPrefs::default(),
+            &reverse_changed,
+            PrimerStrand::Reverse,
+        );
+        // A long template's rules ask for exact pairing; the site is found all the same.
+        let long = BindingPrefs {
+            long_from_bp: 1_000,
+            ..BindingPrefs::default()
+        };
+        let big = mol(
+            &format!("{template}{}", "C".repeat(1_000)),
+            Topology::Linear,
+        );
+        check(&big, &long, changed, PrimerStrand::Forward);
+        // The change 3 bases from the 3' end: a weak site, and too cold to count.
+        let near_end = "GATTATTGACGACTTCCATA";
+        assert!(
+            sites_with_prefs(&m, &[near_end.as_bytes()], &BindingPrefs::default(), &c)
+                .iter()
+                .all(|s| !s.is_primary_with_one_mismatch(20)),
+        );
+    }
+
     #[test]
     fn a_repair_oligo_anneals_across_the_changes_it_carries() {
         let template = "\
