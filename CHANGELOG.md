@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.41.1 (2026-11-26)
+
+### Fixed
+
+- **Feature names fit inside their arrows in the sequence view.** The feature bars were so thin that their names were squeezed against the edges. The bars are now taller, so a name has room inside its arrow.
+
 ## 0.41.0 (2026-11-26)
 
 ### Added

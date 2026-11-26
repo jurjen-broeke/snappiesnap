@@ -283,7 +283,8 @@ impl Metrics {
         let number_w = digits * char_w + 16.0;
         let group_w = 10.0 * char_w + gap;
         let groups = ((width - number_w - 24.0) / group_w).floor().max(1.0) as usize;
-        let lane_h = 13.0;
+        // Room for the 10 pt name inside the bar (the bar is the lane less 4 px).
+        let lane_h = 18.0;
         let sites_h = if sites {
             SITE_ROWS as f32 * SITE_ROW_H + 2.0
         } else {
