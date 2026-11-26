@@ -168,10 +168,11 @@ jobs:
           # wixl builds the .msi. It is part of the msitools project but ships as its own
           # package on Debian and Ubuntu: installing msitools alone gives msiinfo and
           # msibuild, not wixl.
-          sudo apt-get install -y --no-install-recommends nsis wixl osslsigncode
+          # msitools is here for msiinfo, which reads back the .msi to check its architecture.
+          sudo apt-get install -y --no-install-recommends nsis wixl msitools osslsigncode
           # Check the tools here, naming the missing one, rather than failing part-way
           # through packaging with "command not found".
-          for tool in makensis wixl osslsigncode; do
+          for tool in makensis wixl msiinfo osslsigncode; do
             if ! command -v "$tool" >/dev/null; then
               echo "error: $tool is not installed; check the apt packages above" >&2
               exit 1
@@ -208,6 +209,22 @@ jobs:
             -DOUT="dist/SnappieSnap-${VERSION}-windows-x64-setup.exe" packaging/windows/installer.nsi
           wixl -a x64 -D Version="$VERSION" -D Src="$SRC" \
             -o "dist/SnappieSnap-${VERSION}-windows-x64.msi" packaging/windows/snappiesnap.wxs
+          # The .msi must be a 64-bit package: it puts 64-bit binaries in ProgramFiles64Folder
+          # with Win64 components, and a 32-bit package would install them to the wrong place
+          # and confuse upgrades. wixl takes the architecture from -a and ignores the WiX
+          # Package/@Platform attribute (it logs a GLib-GObject-CRITICAL about `Platform`,
+          # which is expected and harmless), so check the file it produced rather than trust
+          # either the flag or the attribute.
+          template="$(msiinfo suminfo "dist/SnappieSnap-${VERSION}-windows-x64.msi" \
+            | sed -n 's/^Template: *//p')"
+          echo "msi template: ${template}"
+          case "$template" in
+            x64* | Intel64* | AMD64*) ;;
+            *)
+              echo "error: the .msi is not a 64-bit package (Template: ${template})" >&2
+              exit 1
+              ;;
+          esac
           sign "dist/SnappieSnap-${VERSION}-windows-x64-setup.exe"
           sign "dist/SnappieSnap-${VERSION}-windows-x64.msi"
           [ -z "$cert" ] || rm -f "$cert"
