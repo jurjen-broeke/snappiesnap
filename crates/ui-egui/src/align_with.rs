@@ -782,7 +782,12 @@ pub fn pane(
     ui.add_space(2.0);
 
     // The reads, scrolling up and down under the construct; the navigator stays at the bottom.
-    let reads_h = (full.bottom() - ui.cursor().top() - NAV_H - 6.0).max(line * 2.0);
+    // Under the reads come the item gap, 4 points, the gap again and the navigator. They must
+    // add up to exactly the room left: a resizable panel keeps the size its contents take, so
+    // a point too many grows the pane by a point every frame.
+    let gap = ui.spacing().item_spacing.y;
+    let below = gap + 4.0 + gap + NAV_H;
+    let reads_h = (full.bottom() - ui.cursor().top() - below).max(0.0);
     let mut toggle = None;
     egui::ScrollArea::vertical()
         .id_salt("align-with-rows")
@@ -1408,6 +1413,87 @@ mod tests {
         entries[0].collapsed = true;
         let (_, asked) = draw(&session, &mut entries, &mut view);
         assert_eq!(asked, None);
+    }
+
+    /// The pane fits the panel it is given. Before, it laid out a few points more than the
+    /// panel's height, the resizable panel kept that size, and with every repaint (each mouse
+    /// move) the pane grew until it squeezed the sequence above it to nothing. Checked as the
+    /// app shows it: in a resizable bottom panel, over many frames, at 1× and at the 1.33×
+    /// of a zoomed browser, from the smallest panel to a tall one.
+    #[test]
+    fn pane_keeps_its_height_frame_after_frame() {
+        let c = construct(1200);
+        let mut session = Session::new();
+        session.open_document(Document::new(
+            Molecule::new(
+                "pTest",
+                Seq::new(Alphabet::Dna, c.as_str()).unwrap(),
+                Topology::Circular,
+            )
+            .unwrap(),
+        ));
+        let construct_id = session.active_document_id().unwrap();
+        let mut reads = Vec::new();
+        for (name, from) in [("a", 100), ("b", 300), ("c", 500)] {
+            session.open_document(Document::new(traced(name, &c[from..from + 400])));
+            reads.push(session.active_document_id().unwrap());
+        }
+        session.switch_document(0).unwrap();
+        let t = Tokens::dark();
+        for scale in [1.0_f32, 4.0 / 3.0] {
+            for panel_h in [140.0_f32, 220.0, 480.0] {
+                let mut entries: Vec<AlignEntry> = reads
+                    .iter()
+                    .map(|&id| AlignEntry {
+                        source: AlignSource::Document(id),
+                        on: true,
+                        collapsed: false,
+                    })
+                    .collect();
+                let mut view = AlignWithView::default();
+                let ctx = egui::Context::default();
+                t.apply(&ctx);
+                let mut heights = Vec::new();
+                for frame in 0..40u32 {
+                    let mut input = egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1300.0, 900.0))),
+                        time: Some(f64::from(frame) * 0.1),
+                        ..Default::default()
+                    };
+                    input
+                        .viewports
+                        .entry(egui::ViewportId::ROOT)
+                        .or_default()
+                        .native_pixels_per_point = Some(scale);
+                    let mut asked = None;
+                    let mut height = 0.0;
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let room = ui.available_height();
+                        let shown = egui::Panel::bottom("align-with-pane")
+                            .resizable(true)
+                            .default_size(panel_h)
+                            .min_size(140.0)
+                            .max_size((room - 120.0).max(160.0))
+                            .show(ui, |ui| {
+                                pane(ui, &t, &session, construct_id, &mut entries, &mut view)
+                            });
+                        asked = shown.inner;
+                        height = shown.response.rect.height();
+                    });
+                    out.textures_delta.clear();
+                    if let Some(AlignWithAction::Check(p)) = asked {
+                        view.set_result(session.execute("check_reads", p).map_err(|e| e.message));
+                    }
+                    heights.push(height);
+                }
+                // A few frames to align and draw, then the height holds.
+                let settled = &heights[5..];
+                assert!(
+                    settled.iter().all(|h| (h - settled[0]).abs() < 0.01),
+                    "scale {scale}, panel {panel_h}: the pane keeps growing: {heights:?}"
+                );
+            }
+        }
     }
 
     /// Hostile geometry never panics: an empty construct, columns off either end, NaN.

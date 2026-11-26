@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.40.2 (2026-11-26)
+
+### Fixed
+
+- **The Align with pane no longer creeps up over the sequence.** Every time the mouse moved, the pane under the sequence grew a little taller, until it pushed the sequence view above it out of sight. It now keeps the height you give it.
+
 ## 0.40.1 (2026-11-26)
 
 ### Fixed
