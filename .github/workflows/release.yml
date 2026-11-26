@@ -165,7 +165,19 @@ jobs:
           set -euo pipefail
           cargo install --locked --git https://github.com/cross-rs/cross cross
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nsis msitools osslsigncode
+          # wixl builds the .msi. It is part of the msitools project but ships as its own
+          # package on Debian and Ubuntu: installing msitools alone gives msiinfo and
+          # msibuild, not wixl.
+          sudo apt-get install -y --no-install-recommends nsis wixl osslsigncode
+          # Check the tools here, naming the missing one, rather than failing part-way
+          # through packaging with "command not found".
+          for tool in makensis wixl osslsigncode; do
+            if ! command -v "$tool" >/dev/null; then
+              echo "error: $tool is not installed; check the apt packages above" >&2
+              exit 1
+            fi
+            echo "$tool: $(command -v "$tool")"
+          done
       - name: Build
         run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli
       - name: Build the installers, signing them when a certificate is configured

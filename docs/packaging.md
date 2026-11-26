@@ -28,7 +28,8 @@ silently raise what the packages require. The images are pinned per target in
 
 **Why MinGW for Windows:** the `x86_64-pc-windows-gnu` target needs no Microsoft SDK licence, so
 the Windows binaries and both installers are cross-built on Linux (`makensis` for the `.exe`,
-msitools' `wixl` for the `.msi`).
+`wixl` for the `.msi`). On Debian and Ubuntu `wixl` is its own package: the `msitools` package
+ships `msiinfo` and `msibuild` but not `wixl`.
 
 **Why macOS needs a Mac:** building for macOS needs Apple's SDK, whose licence allows use on
 Apple hardware only. The job runs on GitHub's `macos-latest` runner.
