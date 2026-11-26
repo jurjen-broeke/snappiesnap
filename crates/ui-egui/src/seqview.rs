@@ -58,6 +58,8 @@ pub struct SeqViewState {
     /// view, while one made with the pointer, which is on screen already, leaves it alone.
     drawn: Option<(usize, usize)>,
     last_selection: Option<usize>,
+    /// The overview under the one-line view.
+    navigator: crate::seq_navigator::Navigator,
 }
 
 /// Where to scroll so a selection can be seen, if anywhere: only when it has just moved, and
@@ -531,7 +533,8 @@ pub fn show(
 
     if single_line {
         // One line: allocate its whole width and draw only the window in view, so a chromosome
-        // costs no more to show than a plasmid.
+        // costs no more to show than a plasmid. The navigator takes the bottom of the view.
+        let nav_h = state.navigator.prepare(m, revision, layers.features);
         let width = metrics.line_width(len).max(ui.available_width());
         let mut area = egui::ScrollArea::horizontal().auto_shrink([false, false]);
         if let Some(pos) = state.scroll_to.take() {
@@ -539,41 +542,56 @@ pub fn show(
             let x = metrics.col_x(0.0, pos.min(len)) - metrics.number_w - 80.0;
             area = area.horizontal_scroll_offset(x.max(0.0));
         }
-        area.show_viewport(ui, |ui, viewport| {
-            let (rect, response) = ui.allocate_exact_size(
-                vec2(width, metrics.row_h.max(ui.available_height())),
-                Sense::click_and_drag(),
-            );
-            rows.push((rect, 0));
-            if len == 0 {
-                ui.label("Empty sequence: type residues to add them.");
-                return;
-            }
-            // The residues the viewport covers, with a column either side.
-            let view_left = rect.left() + viewport.min.x;
-            let first = ((viewport.min.x - metrics.number_w) / metrics.char_w).floor();
-            let first = (first.max(0.0) as usize).min(len);
-            let count = (viewport.width() / metrics.char_w).ceil() as usize + 2;
-            let last = first.saturating_add(count).min(len);
-            state.drawn = Some((first, last));
-            // `left` is shifted so that column `first` lands where it belongs on the line.
-            let left = rect.left() + first as f32 * metrics.char_w;
-            draw_row(
-                ui,
-                Rect::from_min_max(
-                    pos2(view_left, rect.top()),
-                    pos2(view_left + viewport.width(), rect.bottom()),
-                ),
-                &response,
-                (first, last),
-                left,
-                view_left + metrics.number_w - 10.0,
-                &mut site_labels,
-                &mut menu_actions,
-                &mut pointer_actions,
-                &mut chosen_site,
-            );
+        if let Some(centre) = state.navigator.target.take() {
+            // Clicked or dragged in the navigator: centre the view there.
+            let x = metrics.number_w + centre * metrics.char_w - ui.available_width() / 2.0;
+            area = area.horizontal_scroll_offset(x.max(0.0));
+        }
+        let mut window: Option<(f32, f32)> = None;
+        let area_h = (ui.available_height() - nav_h).max(40.0);
+        ui.allocate_ui(vec2(ui.available_width(), area_h), |ui| {
+            area.show_viewport(ui, |ui, viewport| {
+                let (rect, response) = ui.allocate_exact_size(
+                    vec2(width, metrics.row_h.max(ui.available_height())),
+                    Sense::click_and_drag(),
+                );
+                rows.push((rect, 0));
+                if len == 0 {
+                    ui.label("Empty sequence: type residues to add them.");
+                    return;
+                }
+                // The residues the viewport covers, with a column either side.
+                let view_left = rect.left() + viewport.min.x;
+                let first = ((viewport.min.x - metrics.number_w) / metrics.char_w).floor();
+                let first = (first.max(0.0) as usize).min(len);
+                let count = (viewport.width() / metrics.char_w).ceil() as usize + 2;
+                let last = first.saturating_add(count).min(len);
+                state.drawn = Some((first, last));
+                // What is on screen, for the navigator's box.
+                let at = |x: f32| ((x - metrics.number_w) / metrics.char_w).clamp(0.0, len as f32);
+                window = Some((at(viewport.min.x), at(viewport.max.x)));
+                // `left` is shifted so that column `first` lands where it belongs on the line.
+                let left = rect.left() + first as f32 * metrics.char_w;
+                draw_row(
+                    ui,
+                    Rect::from_min_max(
+                        pos2(view_left, rect.top()),
+                        pos2(view_left + viewport.width(), rect.bottom()),
+                    ),
+                    &response,
+                    (first, last),
+                    left,
+                    view_left + metrics.number_w - 10.0,
+                    &mut site_labels,
+                    &mut menu_actions,
+                    &mut pointer_actions,
+                    &mut chosen_site,
+                );
+            });
         });
+        state
+            .navigator
+            .show(ui, t, m, layers.features, nav_h, window, selection);
     } else {
         let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
         if let Some(pos) = state.scroll_to.take() {
@@ -1937,6 +1955,93 @@ mod tests {
         assert!(
             (first..last).contains(&30_000),
             "the selection should be in view, not {first}..{last}"
+        );
+    }
+
+    /// The one-line view has a navigator along its bottom: features far off screen are there in
+    /// their own colours, where they sit on the molecule. The wrapped view has none. Set
+    /// `SNAPPIESNAP_NAV_PNG=/path.png` to look at it.
+    #[test]
+    fn the_one_line_view_has_a_navigator_showing_every_feature() {
+        use snappiesnap_engine::doc::{Alphabet, NewFeature, Segment, Seq, Strand, Topology};
+        let mut m = Molecule::new(
+            "p",
+            Seq::new(Alphabet::Dna, "GAATTCAAATGGTCCCACCA".repeat(2000)).expect("a sequence"),
+            Topology::Circular,
+        )
+        .expect("a molecule");
+        m.add_feature(NewFeature {
+            color: Some("#ff00ff".into()),
+            name: "far away".into(),
+            kind: "misc_feature".into(),
+            strand: Strand::Forward,
+            segments: vec![Segment {
+                range: Range::new(30_000, 32_000),
+            }],
+            qualifiers: vec![],
+        })
+        .expect("a feature");
+        let t = Tokens::dark();
+        let marks = crate::enzymes::Marks {
+            sites: &[],
+            primers: &[],
+            orfs: &[],
+        };
+        let (w, h) = (1200usize, 300usize);
+        let draw = |single: bool| {
+            let mut state = SeqViewState::default();
+            crate::offscreen::render(
+                w as u32,
+                h as u32,
+                1.0,
+                |ctx| t.apply(ctx),
+                |ui| {
+                    show(
+                        ui,
+                        &t,
+                        &m,
+                        None,
+                        &mut state,
+                        1,
+                        &marks,
+                        crate::map::Layers::default(),
+                        &[],
+                        1,
+                        &[],
+                        TailStyle::Simplified,
+                        single,
+                    );
+                },
+            )
+            .expect("the view draws")
+        };
+        let magenta = egui::Color32::from_rgb(255, 0, 255);
+        let xs = |image: &egui::ColorImage| -> Vec<(usize, usize)> {
+            (0..h)
+                .flat_map(|y| (0..w).map(move |x| (x, y)))
+                .filter(|&(x, y)| image.pixels.get(y * w + x) == Some(&magenta))
+                .collect()
+        };
+        let image = draw(true);
+        if let Ok(path) = std::env::var("SNAPPIESNAP_NAV_PNG") {
+            crate::offscreen::write_png(&path, &image).expect("writing the png");
+        }
+        let found = xs(&image);
+        assert!(!found.is_empty(), "the feature is drawn in the navigator");
+        // 30 000..32 000 of 40 000 is 75%..80% of the strip, which spans the width less 8
+        // points either side.
+        let strip = (w - 16) as f32;
+        let (lo, hi) = (8.0 + 0.75 * strip, 8.0 + 0.80 * strip);
+        for &(x, y) in &found {
+            assert!(
+                (lo - 1.0..=hi + 1.0).contains(&(x as f32)),
+                "the feature sits at {lo}..{hi}, not at x {x}"
+            );
+            assert!(y > h - 50, "the navigator is at the bottom, not at y {y}");
+        }
+        assert!(
+            xs(&draw(false)).is_empty(),
+            "the wrapped view has no navigator, and the feature is off screen"
         );
     }
 

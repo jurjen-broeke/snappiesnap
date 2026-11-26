@@ -34,6 +34,7 @@ pub mod oligo_view;
 pub mod preferences;
 pub mod primer_design;
 pub mod reads_view;
+mod seq_navigator;
 mod seqview;
 pub mod settings;
 pub mod sidebar;

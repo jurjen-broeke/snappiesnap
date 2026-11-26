@@ -3063,7 +3063,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "embed-resource",
  "serde_json",
@@ -3073,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-bio"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "proptest",
  "serde",
@@ -3085,7 +3085,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-cli"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "serde_json",
  "snappiesnap-engine",
@@ -3097,7 +3097,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-doc"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "proptest",
  "schemars",
@@ -3109,7 +3109,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-engine"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "lzma-rs",
  "schemars",
@@ -3126,7 +3126,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-formats"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "lzma-rs",
  "miniz_oxide 0.8.9",
@@ -3137,7 +3137,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-io"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "proptest",
  "serde",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-layout"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "snappiesnap-doc",
  "snappiesnap-seq",
@@ -3157,7 +3157,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-mcp"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -3167,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-render"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "snappiesnap-doc",
  "snappiesnap-layout",
@@ -3175,7 +3175,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-seq"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "proptest",
  "schemars",
@@ -3186,7 +3186,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-ui-egui"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "eframe",
  "image",
@@ -3205,7 +3205,7 @@ dependencies = [
 
 [[package]]
 name = "snappiesnap-web"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "serde_json",
  "snappiesnap-engine",
@@ -4435,7 +4435,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.40.2"
+version = "0.41.0"
 dependencies = [
  "resvg",
  "serde_json",

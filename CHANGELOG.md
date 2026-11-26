@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.41.0 (2026-11-26)
+
+### Added
+
+- **A navigator under the one-line sequence view.** When the sequence runs along one line, a strip along the bottom of the view shows the whole molecule: every feature as a bar in the same colour as in the sequence, your selection, and a box marking the stretch on screen. Click or drag in it to move the view there, and hover over it to see the position and the names of the features under the pointer. It shows the construct only; sequences aligned in the Align with pane are left out.
+
 ## 0.40.2 (2026-11-26)
 
 ### Fixed
