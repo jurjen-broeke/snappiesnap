@@ -239,9 +239,10 @@ struct Metrics {
     /// The amino acids used to sit inside the feature's arrow, where its colour and its name
     /// hid them.
     cds_h: f32,
-    /// Feature lanes (0 when features are hidden), primer rows (forward, reverse) and ORF lanes.
+    /// Feature lanes (0 when features are hidden), primer rows (forward primers above the top
+    /// strand, reverse ones below the bottom strand) and ORF lanes.
     feature_lanes: usize,
-    primer_rows: usize,
+    primer_rows: (usize, usize),
     orf_rows: usize,
     font: FontId,
     char_w: f32,
@@ -268,7 +269,7 @@ impl Metrics {
         sites: bool,
         frames: &[i8],
         layers: crate::map::Layers,
-        primer_rows: usize,
+        primer_rows: (usize, usize),
         orf_rows: usize,
         translated: bool,
         single: bool,
@@ -296,7 +297,7 @@ impl Metrics {
         } else {
             0
         };
-        let extra = primer_rows as f32 * line_h + orf_rows as f32 * ORF_ROW_H;
+        let extra = (primer_rows.0 + primer_rows.1) as f32 * line_h + orf_rows as f32 * ORF_ROW_H;
         let cds_h = if layers.features && translated {
             AA_ROW_H
         } else {
@@ -329,6 +330,16 @@ impl Metrics {
             single,
             ruler_h,
         }
+    }
+
+    /// Height of the forward primer rows, between the site names and the top strand.
+    fn forward_primers_h(&self) -> f32 {
+        self.primer_rows.0 as f32 * self.line_h
+    }
+
+    /// Height of the reverse primer rows, between the bottom strand and the features.
+    fn reverse_primers_h(&self) -> f32 {
+        self.primer_rows.1 as f32 * self.line_h
     }
 
     /// Width of the whole line, gutter included (single-line mode: the scrolled content).
@@ -742,7 +753,7 @@ fn draw_sites(
         let h = galley.size().y;
         let lx = xt - w / 2.0;
         let placed = rows.iter().position(|&e| e + 4.0 < lx).map(|r| {
-            let y = top - mx.sites_h + 1.0 + r as f32 * SITE_ROW_H;
+            let y = top - mx.forward_primers_h() - mx.sites_h + 1.0 + r as f32 * SITE_ROW_H;
             (r, y, Rect::from_min_size(pos2(lx, y), vec2(w, h)))
         });
         let hovered = placed.is_some_and(|(_, _, rect)| hover.is_some_and(|p| rect.contains(p)));
@@ -785,7 +796,7 @@ fn draw_sites(
     }
     if hidden > 0 {
         painter.text(
-            pos2(gutter_x, top - mx.sites_h + 1.0),
+            pos2(gutter_x, top - mx.forward_primers_h() - mx.sites_h + 1.0),
             Align2::RIGHT_TOP,
             format!("+{hidden}"),
             font,
@@ -881,7 +892,8 @@ fn draw_line(
 ) {
     let painter = ui.painter_at(rect);
     let len = m.len();
-    let top = rect.top() + 4.0 + mx.ruler_h + mx.sites_h;
+    // The top strand: under the ruler, the site names and the forward primers.
+    let top = rect.top() + 4.0 + mx.ruler_h + mx.sites_h + mx.forward_primers_h();
     draw_sites(
         &painter,
         t,
@@ -949,7 +961,7 @@ fn draw_line(
             let mut p = first.max(10);
             while p <= end {
                 let x = mx.col_x(left, p - start) - mx.char_w / 2.0;
-                let y = top - mx.sites_h - 3.0;
+                let y = top - mx.forward_primers_h() - mx.sites_h - 3.0;
                 painter.line_segment(
                     [pos2(x, y), pos2(x, y - 4.0)],
                     Stroke::new(1.0, t.text_muted),
@@ -1003,7 +1015,7 @@ fn draw_line(
     // The features come straight under the two strands, each with its translation in a strip
     // of its own above the bar; the reading frames go under the features (amino acids drawn
     // inside the arrow were hidden by its colour and its name).
-    let tracks_top = top + 2.0 * mx.line_h + 2.0;
+    let tracks_top = top + 2.0 * mx.line_h + mx.reverse_primers_h() + 2.0;
     let lane_block = mx.lane_h + mx.cds_h;
     let aa_top = tracks_top + mx.feature_lanes as f32 * lane_block + 4.0;
     for (row, &frame) in mx.frames.iter().enumerate() {
@@ -1137,8 +1149,9 @@ fn draw_line(
         );
     }
 
-    // Primers: each in its lane, written base by base against the strand it pairs with.
-    let primers_top = aa_top + mx.frames.len() as f32 * AA_ROW_H;
+    // Primers: each in its lane on the strand it has the sequence of (forward primers above
+    // the top strand, reverse ones below the bottom strand), written base by base against
+    // the strand it pairs with.
     for d in primers {
         draw_duplex(
             &painter,
@@ -1148,14 +1161,14 @@ fn draw_line(
             d,
             left,
             (gutter_x + 6.0, mx.col_x(left, end - start) + 4.0),
-            primers_top,
+            primer_row_y(mx, top, d),
             start,
             end,
         );
     }
 
     // ORFs: thin arrows, one lane each.
-    let orfs_top = primers_top + mx.primer_rows as f32 * mx.line_h + 2.0;
+    let orfs_top = aa_top + mx.frames.len() as f32 * AA_ROW_H + 2.0;
     for o in orfs {
         if o.lane >= mx.orf_rows {
             continue;
@@ -1201,19 +1214,20 @@ pub(crate) struct Duplex<'a> {
     loops: Vec<(i64, usize, bool)>,
     /// The position of the primer's 5' base, for its name.
     five: i64,
-    /// Row from the top of the primer rows.
+    /// Row on its strand's side, counted outwards from the strand.
     row: usize,
 }
 
 /// Lay the primers out: each primer's bases against the positions they pair with (forward
 /// primers 5'→3' rightwards; reverse ones written 3'→5', each base over its partner), tails
-/// written out or shown as a loop, and lanes so that primers don't overlap. Forward lanes
-/// first, then reverse ones. Returns the duplexes and the number of rows.
+/// written out or shown as a loop, and lanes so that primers on one strand don't overlap.
+/// Returns the duplexes and the number of rows of forward and of reverse primers; a duplex's
+/// `row` counts from its strand outwards.
 fn duplexes<'a>(
     marks: &'a [crate::enzymes::PrimerMark],
     tails: TailStyle,
     char_w: &f32,
-) -> (Vec<Duplex<'a>>, usize) {
+) -> (Vec<Duplex<'a>>, (usize, usize)) {
     let full = tails == TailStyle::Full;
     let name_cols = |p: &crate::enzymes::PrimerMark| -> i64 {
         ((p.name.chars().count() as f32 * 5.8) / char_w.max(1.0)).ceil() as i64 + 2
@@ -1288,16 +1302,21 @@ fn duplexes<'a>(
             *last = e;
         }
         d.row = lane;
-        kept.push((d, k));
+        kept.push(d);
     }
-    let forward_rows = ends[0].len();
-    for (d, k) in &mut kept {
-        if *k == 1 {
-            d.row += forward_rows;
-        }
+    let [forward, reverse] = ends;
+    (kept, (forward.len(), reverse.len()))
+}
+
+/// The middle of a primer's row: forward primers stack upwards from the top strand (whose top
+/// is `top`), reverse ones downwards from the bottom strand.
+fn primer_row_y(mx: &Metrics, top: f32, d: &Duplex<'_>) -> f32 {
+    let row = d.row as f32;
+    if d.mark.forward {
+        top - (row + 1.0) * mx.line_h + mx.line_h / 2.0
+    } else {
+        top + (2.0 + row) * mx.line_h + mx.line_h / 2.0
     }
-    let rows = forward_rows + ends[1].len();
-    (kept.into_iter().map(|(d, _)| d).collect(), rows)
 }
 
 /// The column (0-based on this line) of unwrapped position `pos`, if it is on the line.
@@ -1322,7 +1341,8 @@ fn draw_duplex(
     left: f32,
     // Left and right edge of the residues drawn, to keep a primer's name in view.
     bounds: (f32, f32),
-    top: f32,
+    // The middle of the primer's row.
+    y: f32,
     start: usize,
     end: usize,
 ) {
@@ -1330,7 +1350,9 @@ fn draw_duplex(
     let circular = m.topology() == snappiesnap_engine::doc::Topology::Circular;
     let seq = m.seq().as_bytes();
     let p = d.mark;
-    let y = top + d.row as f32 * mx.line_h + mx.line_h / 2.0;
+    // A base that doesn't pair steps away from the strand: up above the top strand, down
+    // below the bottom one.
+    let away = if p.forward { -1.0 } else { 1.0 };
     let paired_color = if p.primary { t.text } else { t.text_muted };
     let complement = |b: u8| match b.to_ascii_uppercase() {
         b'A' => b'T',
@@ -1340,7 +1362,10 @@ fn draw_duplex(
         other => other,
     };
     let primer = p.seq.as_bytes();
-    let mut last_x: Option<(f32, usize)> = None;
+    // The columns drawn on this line, the primer base each holds, and whether it steps out.
+    let mut drawn_cols: Vec<(usize, usize, bool)> = Vec::new();
+    // The outline goes under the bases; it is known only once they are placed.
+    let backdrop = painter.add(Shape::Noop);
     for &(pos, i, paired) in &d.cells {
         let Some(col) = line_col(pos, len, circular, start, end) else {
             continue;
@@ -1364,62 +1389,51 @@ fn draw_duplex(
         } else {
             (char::from(up), t.error)
         };
-        // A base that doesn't pair steps up out of the row, with the row stepping around it:
-        // the primer still reads as one piece, and where it differs is obvious at a glance.
-        // A repair or mutagenesis oligo is mostly made of such bases.
-        let jog = if paired && !matches {
-            MISMATCH_JOG
-        } else {
-            0.0
-        };
-        if jog > 0.0 {
+        // A base that doesn't pair steps out of the row, away from the strand, with the
+        // outline stepping around it: the primer still reads as one piece, and where it
+        // differs is obvious at a glance. A repair or mutagenesis oligo is mostly made of
+        // such bases.
+        let jogs = paired && !matches;
+        let jog = if jogs { away * MISMATCH_JOG } else { 0.0 };
+        if jogs {
             painter.rect_filled(
                 Rect::from_min_size(
-                    pos2(x - 0.5, y - jog - mx.line_h / 2.0 + 1.0),
+                    pos2(x - 0.5, y + jog - mx.line_h / 2.0 + 1.0),
                     vec2(mx.char_w + 1.0, mx.line_h - 2.0),
                 ),
                 2.0,
                 t.error.gamma_multiply(0.15),
             );
-            let step = Stroke::new(1.0, t.error.gamma_multiply(0.7));
-            let (bottom, top) = (y + mx.line_h / 2.0 - 2.0, y - jog + mx.line_h / 2.0 - 2.0);
-            for sx in [x - 0.5, x + mx.char_w + 0.5] {
-                painter.line_segment([pos2(sx, bottom), pos2(sx, top)], step);
-            }
         }
         painter.text(
-            pos2(x + mx.char_w / 2.0, y - jog),
+            pos2(x + mx.char_w / 2.0, y + jog),
             Align2::CENTER_CENTER,
             text,
             mx.font.clone(),
             color,
         );
-        if primer.len().checked_sub(1) == Some(i) {
-            last_x = Some((x, col));
-        }
+        drawn_cols.push((col, i, jogs));
     }
-    // The 3' end: a small arrow pointing the way the primer extends.
-    if let Some((x, _)) = last_x {
-        let (tip, base) = if p.forward {
-            (x + mx.char_w + 6.0, x + mx.char_w + 1.0)
-        } else {
-            (x - 6.0, x - 1.0)
-        };
-        painter.add(egui::Shape::convex_polygon(
-            vec![pos2(tip, y), pos2(base, y - 4.0), pos2(base, y + 4.0)],
-            paired_color,
-            Stroke::NONE,
-        ));
-    }
+    // The outline: an open arrow around each run of the primer's bases on this line, its head
+    // at the 3' end, so primers stand apart from the filled feature arrows. Inside it is bare
+    // canvas, so a restriction site's line passing by doesn't run through the bases.
+    let outline = Stroke::new(1.2, if p.primary { t.accent } else { t.text_muted });
+    drawn_cols.sort_unstable_by_key(|c| c.0);
+    let three = primer.len().saturating_sub(1);
+    let shapes: Vec<Shape> = drawn_cols
+        .chunk_by(|a, b| a.0.checked_add(1) == Some(b.0))
+        .filter_map(|run| primer_outline(mx, left, y, run, p.forward, three, t.canvas, outline))
+        .collect();
+    painter.set(backdrop, Shape::Vec(shapes));
     // Loops for the parts not written out, with how many bases they stand for.
     for &(pos, count, on_left) in &d.loops {
         let Some(col) = line_col(pos, len, circular, start, end) else {
             continue;
         };
         let x = if on_left {
-            mx.col_x(left, col) - 1.0
+            mx.col_x(left, col) - 2.5
         } else {
-            mx.col_x(left, col) + mx.char_w + 1.0
+            mx.col_x(left, col) + mx.char_w + 2.5
         };
         let dx = if on_left { -7.0 } else { 7.0 };
         let top_y = y - mx.line_h / 2.0 + 1.0;
@@ -1460,7 +1474,7 @@ fn draw_duplex(
     let (line_left, line_right) = bounds;
     if let Some(col) = line_col(d.five_name_at(), len, circular, start, end) {
         let loop_here = d.loops.iter().any(|l| l.0 == d.five_name_at());
-        let shift = if loop_here { 30.0 } else { 4.0 };
+        let shift = if loop_here { 32.0 } else { 5.0 };
         let (mut x, mut align) = if p.forward {
             (mx.col_x(left, col) - shift, Align2::RIGHT_CENTER)
         } else {
@@ -1474,10 +1488,11 @@ fn draw_duplex(
         if !fits {
             let lo = drawn.iter().copied().fold(f32::INFINITY, f32::min);
             let hi = drawn.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            // Past the arrowhead at the 3' end.
             (x, align) = if p.forward {
-                (hi + mx.char_w + 12.0, Align2::LEFT_CENTER)
+                (hi + mx.char_w + 14.0, Align2::LEFT_CENTER)
             } else {
-                (lo - 12.0, Align2::RIGHT_CENTER)
+                (lo - 14.0, Align2::RIGHT_CENTER)
             };
         }
         if x.is_finite() {
@@ -1490,6 +1505,99 @@ fn draw_duplex(
             );
         }
     }
+}
+
+/// Length of the head of a primer's outline.
+const PRIMER_HEAD: f32 = 6.0;
+
+/// The outline of one run of consecutive columns of a primer (column, primer base, steps out),
+/// sorted by column: a box around the bases, stepping out around the ones that step out of
+/// the row (up for a forward primer, down for a reverse one), with a head at the 3' end when
+/// the base `three` is in the run, filled with `fill`. The outline is not convex where it
+/// steps, so the fill is drawn as convex pieces: the box, the head and each step.
+#[allow(clippy::too_many_arguments)]
+fn primer_outline(
+    mx: &Metrics,
+    left: f32,
+    y: f32,
+    run: &[(usize, usize, bool)],
+    forward: bool,
+    three: usize,
+    fill: egui::Color32,
+    stroke: Stroke,
+) -> Option<Shape> {
+    let (first, last) = (run.first()?, run.last()?);
+    let x0 = mx.col_x(left, first.0) - 1.5;
+    let x1 = mx.col_x(left, last.0) + mx.char_w + 1.5;
+    let half = mx.line_h / 2.0 - 0.5;
+    let (yt, yb) = (y - half, y + half);
+    let head = run.iter().any(|c| c.1 == three);
+    // The side bases step out on: the top for forward primers, the bottom for reverse ones.
+    let steps = |edge: f32, dir: f32| -> Vec<Pos2> {
+        let mut out = Vec::new();
+        for c in run.iter().filter(|c| c.2) {
+            let cx0 = mx.col_x(left, c.0) - 0.5;
+            let cx1 = cx0 + mx.char_w + 1.0;
+            let out_y = edge + dir * MISMATCH_JOG;
+            out.extend([
+                pos2(cx0, edge),
+                pos2(cx0, out_y),
+                pos2(cx1, out_y),
+                pos2(cx1, edge),
+            ]);
+        }
+        out
+    };
+    let mut shapes = vec![Shape::rect_filled(
+        Rect::from_min_max(pos2(x0, yt), pos2(x1, yb)),
+        0.0,
+        fill,
+    )];
+    if head {
+        let (base, tip) = if forward {
+            (x1, x1 + PRIMER_HEAD)
+        } else {
+            (x0, x0 - PRIMER_HEAD)
+        };
+        shapes.push(Shape::convex_polygon(
+            vec![pos2(base, yt), pos2(tip, y), pos2(base, yb)],
+            fill,
+            Stroke::NONE,
+        ));
+    }
+    for c in run.iter().filter(|c| c.2) {
+        let cx0 = mx.col_x(left, c.0) - 0.5;
+        let (a, b) = if forward {
+            (yt - MISMATCH_JOG, yt + 1.0)
+        } else {
+            (yb - 1.0, yb + MISMATCH_JOG)
+        };
+        shapes.push(Shape::rect_filled(
+            Rect::from_min_max(pos2(cx0, a), pos2(cx0 + mx.char_w + 1.0, b)),
+            0.0,
+            fill,
+        ));
+    }
+    let mut points = vec![pos2(x0, yt)];
+    if forward {
+        points.extend(steps(yt, -1.0));
+    }
+    points.push(pos2(x1, yt));
+    if forward && head {
+        points.push(pos2(x1 + PRIMER_HEAD, y));
+    }
+    points.push(pos2(x1, yb));
+    if !forward {
+        let mut bottom = steps(yb, 1.0);
+        bottom.reverse();
+        points.extend(bottom);
+    }
+    points.push(pos2(x0, yb));
+    if !forward && head {
+        points.push(pos2(x0 - PRIMER_HEAD, y));
+    }
+    shapes.push(Shape::closed_line(points, stroke));
+    Some(Shape::Vec(shapes))
 }
 
 impl Duplex<'_> {
@@ -1537,7 +1645,7 @@ mod tests {
             layers: crate::map::Layers::default(),
             cds_h: 0.0,
             feature_lanes: 1,
-            primer_rows: 0,
+            primer_rows: (0, 0),
             orf_rows: 0,
             font: FontId::monospace(13.0),
             char_w: 8.0,
@@ -1590,7 +1698,7 @@ mod tests {
             mark("p", "AAAAAAcccc", 500, 6, true, true),
         ];
         let (d, rows) = duplexes(&marks, TailStyle::Simplified, &8.0);
-        assert_eq!(rows, 2, "one forward lane, one reverse");
+        assert_eq!(rows, (1, 1), "one forward lane, one reverse");
         let f = d.iter().find(|d| d.mark.name == "f").unwrap();
         assert_eq!(f.cells.len(), 10);
         assert_eq!(f.cells.first(), Some(&(100, 4, true)));
@@ -1599,7 +1707,7 @@ mod tests {
         assert_eq!(f.five, 96);
         assert_eq!(f.five_name_at(), 100);
         let r = d.iter().find(|d| d.mark.name == "r").unwrap();
-        assert_eq!(r.row, 1);
+        assert_eq!(r.row, 0, "the first row below the bottom strand");
         // Written 3'→5': its first paired base (index 2) over the last template base.
         assert_eq!(r.cells.first(), Some(&(307, 2, true)));
         assert_eq!(r.cells.last(), Some(&(300, 9, true)));
@@ -1624,9 +1732,9 @@ mod tests {
             .map(|i| mark("x", "ACGTACGTACGT", 10 + i, 12, true, false))
             .collect();
         let (d, rows) = duplexes(&many, TailStyle::Simplified, &8.0);
-        assert_eq!(rows, MAX_PRIMER_LANES);
+        assert_eq!(rows, (MAX_PRIMER_LANES, 0));
         assert_eq!(d.len(), MAX_PRIMER_LANES);
-        assert_eq!(duplexes(&[], TailStyle::Full, &8.0).1, 0);
+        assert_eq!(duplexes(&[], TailStyle::Full, &8.0).1, (0, 0));
     }
 
     #[test]
@@ -1836,7 +1944,7 @@ mod tests {
         let t = Tokens::light();
         let mx = metrics();
         let (duplexes, rows) = duplexes(&marks, TailStyle::Simplified, &mx.char_w);
-        assert_eq!(rows, 1);
+        assert_eq!(rows, (1, 0));
         let d = duplexes.first().expect("the oligo is drawn");
         let image = crate::offscreen::render(
             700,
@@ -1853,7 +1961,7 @@ mod tests {
                     d,
                     10.0,
                     (10.0, 690.0),
-                    40.0,
+                    40.0 + mx.line_h / 2.0,
                     0,
                     m.len(),
                 );
@@ -1878,8 +1986,8 @@ mod tests {
             .map(|(i, _)| i / w.max(1))
             .collect();
         assert!(marked.len() > 20, "the changed bases should be drawn");
-        // The row's middle, as `draw_duplex` works it out from the `top` passed in. Without
-        // the step up, nothing marked could reach higher than the top of the row itself.
+        // The row's middle, as passed to `draw_duplex`. Without the step up, nothing marked
+        // could reach higher than the top of the row itself.
         let row_middle = 40.0 + mx.line_h / 2.0;
         let row_top = row_middle - mx.line_h / 2.0;
         let highest = marked.iter().copied().min().unwrap_or(usize::MAX) as f32;
@@ -1892,6 +2000,136 @@ mod tests {
             mean < row_middle,
             "the changed bases sit above the row's middle ({row_middle}), not at {mean}"
         );
+
+        // A reverse primer sits below the bottom strand, so its changed bases step down.
+        let marks = vec![mark("Rev", oligo, 1, oligo.len(), false, false)];
+        let (laid_out, rows) = super::duplexes(&marks, TailStyle::Simplified, &mx.char_w);
+        assert_eq!(rows, (0, 1));
+        let d = laid_out.first().expect("the oligo is drawn");
+        let image = crate::offscreen::render(
+            700,
+            120,
+            1.0,
+            |ctx| t.apply(ctx),
+            |ui| {
+                let painter = ui.painter().clone();
+                draw_duplex(
+                    &painter,
+                    &t,
+                    &m,
+                    &mx,
+                    d,
+                    10.0,
+                    (10.0, 690.0),
+                    row_middle,
+                    0,
+                    m.len(),
+                );
+            },
+        )
+        .expect("the primer draws");
+        let marked: Vec<usize> = image
+            .pixels
+            .iter()
+            .enumerate()
+            .filter(|(_, px)| {
+                close(px.r(), err.r()) && close(px.g(), err.g()) && close(px.b(), err.b())
+            })
+            .map(|(i, _)| i / w.max(1))
+            .collect();
+        assert!(
+            marked.len() > 20,
+            "the bases that don't pair should be drawn"
+        );
+        let mean = marked.iter().sum::<usize>() as f32 / marked.len() as f32;
+        assert!(
+            mean > row_middle,
+            "a reverse primer's changed bases sit below the row's middle ({row_middle}), not at {mean}"
+        );
+    }
+
+    /// Primers sit on the strand they have the sequence of: forward ones in rows stacked up
+    /// from the top strand, reverse ones in rows stacked down from the bottom strand.
+    #[test]
+    fn primers_sit_on_their_own_strand() {
+        let mx = Metrics {
+            primer_rows: (2, 2),
+            ..metrics()
+        };
+        let marks = vec![
+            mark("f0", "ACGTACGTAC", 10, 10, true, false),
+            mark("f1", "ACGTACGTAC", 12, 10, true, false),
+            mark("r0", "ACGTACGTAC", 10, 10, false, false),
+            mark("r1", "ACGTACGTAC", 12, 10, false, false),
+        ];
+        let (d, rows) = duplexes(&marks, TailStyle::Simplified, &mx.char_w);
+        assert_eq!(rows, (2, 2));
+        let y = |name: &str| {
+            let d = d.iter().find(|d| d.mark.name == name).expect("laid out");
+            primer_row_y(&mx, 100.0, d)
+        };
+        let (top_strand, bottom_end) = (100.0, 100.0 + 2.0 * mx.line_h);
+        // Nearest the strand first, then further out.
+        assert_eq!(y("f0"), top_strand - mx.line_h / 2.0);
+        assert_eq!(y("f1"), top_strand - 1.5 * mx.line_h);
+        assert_eq!(y("r0"), bottom_end + mx.line_h / 2.0);
+        assert_eq!(y("r1"), bottom_end + 1.5 * mx.line_h);
+    }
+
+    /// A primer's outline: a box with a head at the 3' end when that end is on the line, and
+    /// a step out of the box around a base that doesn't pair, away from the strand.
+    #[test]
+    fn primer_outlines_point_at_the_three_prime_end() {
+        let mx = metrics();
+        let outline = |run: &[(usize, usize, bool)], forward: bool| -> Vec<Pos2> {
+            let Some(Shape::Vec(shapes)) = primer_outline(
+                &mx,
+                0.0,
+                50.0,
+                run,
+                forward,
+                9,
+                egui::Color32::BLACK,
+                Stroke::NONE,
+            ) else {
+                panic!("an outline");
+            };
+            match shapes.last() {
+                Some(Shape::Path(p)) => p.points.clone(),
+                other => panic!("the outline is a path, not {other:?}"),
+            }
+        };
+        let run: Vec<(usize, usize, bool)> = (0..10).map(|i| (i, i, false)).collect();
+        let x_max = |pts: &[Pos2]| pts.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+        let x_min = |pts: &[Pos2]| pts.iter().map(|p| p.x).fold(f32::MAX, f32::min);
+        let box_right = mx.col_x(0.0, 9) + mx.char_w + 1.5;
+        let box_left = mx.col_x(0.0, 0) - 1.5;
+        // Forward: 3' end (base 9) at the right, so the head points right.
+        let f = outline(&run, true);
+        assert_eq!(x_max(&f), box_right + PRIMER_HEAD);
+        assert_eq!(x_min(&f), box_left);
+        // Reverse: the head points left.
+        let r = outline(&run, false);
+        assert_eq!(x_min(&r), box_left - PRIMER_HEAD);
+        assert_eq!(x_max(&r), box_right);
+        // Without its 3' end on this line, a piece has no head.
+        let five_half = run.get(..5).expect("five");
+        assert_eq!(
+            x_max(&outline(five_half, true)),
+            mx.col_x(0.0, 4) + mx.char_w + 1.5
+        );
+        // A base that doesn't pair: the outline steps up (forward) or down (reverse) by the jog.
+        let mut jogged = run.clone();
+        if let Some(c) = jogged.get_mut(4) {
+            c.2 = true;
+        }
+        let half = mx.line_h / 2.0 - 0.5;
+        let y_min = |pts: &[Pos2]| pts.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let y_max = |pts: &[Pos2]| pts.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+        assert_eq!(y_min(&outline(&jogged, true)), 50.0 - half - MISMATCH_JOG);
+        assert_eq!(y_max(&outline(&jogged, true)), 50.0 + half);
+        assert_eq!(y_max(&outline(&jogged, false)), 50.0 + half + MISMATCH_JOG);
+        assert_eq!(y_min(&outline(&jogged, false)), 50.0 - half);
     }
 
     /// One line, scrolled sideways: only the residues in view are drawn, whatever the

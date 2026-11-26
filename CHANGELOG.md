@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.42.0 (2026-11-26)
+
+### Added
+
+- **Primers in the sequence view sit on their own strand, as outlined arrows.** A forward primer is now drawn just above the top strand and a reverse primer just below the bottom strand, instead of in rows under the features. Each one is outlined (not filled, so it stands apart from the features) with the arrowhead at its 3' end, showing the way it extends. A base that doesn't pair still steps out of the row, now away from the strand, with the outline stepping around it. Restriction site names move up to make room above the forward primers.
+
 ## 0.41.1 (2026-11-26)
 
 ### Fixed
