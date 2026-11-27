@@ -152,7 +152,7 @@ pub struct CloningInputs {
     files: Vec<String>,
     listed: Option<String>,
     /// The construct's sequence view (scroll position and its cached translations).
-    seq: crate::seqview::SeqViewState,
+    pub seq: crate::seqview::SeqViewState,
     /// What is selected in it, and in which construct: selecting and copying work here even
     /// though editing doesn't, and a selection means nothing once another construct is shown.
     selection: Option<(String, Range)>,

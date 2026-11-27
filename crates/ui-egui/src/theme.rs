@@ -194,8 +194,9 @@ impl Tokens {
             .unwrap_or(self.accent)
     }
 
-    /// Apply the tokens to egui's widget visuals.
+    /// Apply the tokens to egui's widget visuals, and install the fonts egui doesn't bundle.
     pub fn apply(&self, ctx: &egui::Context) {
+        install_fonts(ctx);
         let mut v = if self.dark {
             Visuals::dark()
         } else {
@@ -244,6 +245,33 @@ pub fn parse_hex(text: &str) -> Option<Color32> {
 /// A colour as `#rrggbb` (lower case; alpha is dropped).
 pub fn hex(c: Color32) -> String {
     format!("#{:02x}{:02x}{:02x}", c.r(), c.g(), c.b())
+}
+
+/// Hack Bold (assets/fonts, MIT and Bitstream Vera licences): the bold weight of the Hack
+/// face egui uses for monospace text, with the same character widths, so bold residues line up
+/// with regular ones.
+const HACK_BOLD: &[u8] = include_bytes!("../../../assets/fonts/Hack-Bold.ttf");
+
+/// The font family name of [`mono_bold`].
+const MONO_BOLD: &str = "mono-bold";
+
+/// Bold monospace text: the reference sequence that reads are aligned to.
+pub fn mono_bold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name(MONO_BOLD.into()))
+}
+
+/// Add Hack Bold as the [`mono_bold`] family (it covers what the residues need: Latin letters,
+/// digits and punctuation). egui skips a font it has already, so this is cheap to repeat.
+fn install_fonts(ctx: &egui::Context) {
+    use egui::epaint::text::{FontData, FontInsert, FontPriority, InsertFontFamily};
+    ctx.add_font(FontInsert::new(
+        "hack-bold",
+        FontData::from_static(HACK_BOLD),
+        vec![InsertFontFamily {
+            family: egui::FontFamily::Name(MONO_BOLD.into()),
+            priority: FontPriority::Highest,
+        }],
+    ));
 }
 
 #[cfg(test)]

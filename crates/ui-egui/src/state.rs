@@ -1115,6 +1115,9 @@ pub struct UiState {
     pub preferences_page: crate::preferences::PrefsPage,
     /// Interface size (1 = normal), as set in Preferences or with Ctrl/Cmd + and -.
     pub ui_scale: f32,
+    /// Size of the residues in the sequence view and the Align with pane, in points.
+    #[serde(default = "sequence_font_default")]
+    pub sequence_font: f32,
     /// Reopen the window at the size it had when the app last ran.
     pub restore_window: bool,
     /// Map zoom (1 = the whole molecule fits).
@@ -1160,6 +1163,7 @@ impl Default for UiState {
             preferences: false,
             preferences_page: crate::preferences::PrefsPage::default(),
             ui_scale: 1.0,
+            sequence_font: SEQUENCE_FONT_DEFAULT,
             restore_window: true,
             map_zoom: 1.0,
             genetic_code: 1,
@@ -1279,6 +1283,24 @@ pub fn clamp_trace_gain(g: f32) -> f32 {
     }
 }
 
+/// The sequence font size until the user picks another, in points.
+pub const SEQUENCE_FONT_DEFAULT: f32 = 13.0;
+
+fn sequence_font_default() -> f32 {
+    SEQUENCE_FONT_DEFAULT
+}
+
+/// A sequence font size kept within Preferences' range, in whole points (the default for a
+/// value that isn't a number).
+pub fn clamp_sequence_font(z: f32) -> f32 {
+    let range = crate::preferences::SEQUENCE_FONT_RANGE;
+    if z.is_finite() {
+        z.round().max(*range.start()).min(*range.end())
+    } else {
+        SEQUENCE_FONT_DEFAULT
+    }
+}
+
 /// An interface size kept within Preferences' range (1 for a value that isn't a number).
 pub fn clamp_ui_scale(z: f32) -> f32 {
     let range = crate::preferences::UI_SCALE_RANGE;
@@ -1316,6 +1338,7 @@ pub struct UiPatch {
     pub preferences: Option<bool>,
     pub preferences_page: Option<crate::preferences::PrefsPage>,
     pub ui_scale: Option<f32>,
+    pub sequence_font: Option<f32>,
     pub restore_window: Option<bool>,
     pub map_zoom: Option<f32>,
     pub trace_zoom: Option<f32>,
@@ -1410,6 +1433,9 @@ impl UiState {
         }
         if let Some(z) = patch.ui_scale {
             self.ui_scale = clamp_ui_scale(z);
+        }
+        if let Some(z) = patch.sequence_font {
+            self.sequence_font = clamp_sequence_font(z);
         }
         if let Some(tr) = patch.translation {
             self.translation = tr;

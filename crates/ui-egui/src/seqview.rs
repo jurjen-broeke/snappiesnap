@@ -70,6 +70,8 @@ pub struct SeqViewState {
     pub line: Option<LineGeometry>,
     /// What the navigator's box shows: the residues in view on the one line.
     window: Option<(f32, f32)>,
+    /// Size of the residues, in points (Preferences); 0 or out of range means the default.
+    pub font_size: f32,
 }
 
 /// Where the one-line view put its residues this frame: residue `p` has its left edge at
@@ -80,6 +82,8 @@ pub struct SeqViewState {
 pub struct LineGeometry {
     pub origin_x: f32,
     pub char_w: f32,
+    /// The residues' font size, in points.
+    pub font_size: f32,
     pub clip_left: f32,
     pub clip_right: f32,
 }
@@ -276,6 +280,15 @@ pub fn frame_codons(
     out
 }
 
+/// The residues' font size: the preference, or the default when it is unset or out of range.
+fn sequence_font_size(asked: f32) -> f32 {
+    if asked > 0.0 {
+        crate::state::clamp_sequence_font(asked)
+    } else {
+        crate::state::SEQUENCE_FONT_DEFAULT
+    }
+}
+
 struct Metrics {
     /// Height of the restriction site label rows above each line (0 when sites are off).
     sites_h: f32,
@@ -322,10 +335,12 @@ impl Metrics {
         orf_rows: usize,
         translated: bool,
         single: bool,
+        font_size: f32,
     ) -> Self {
-        let font = FontId::monospace(13.0);
+        let font = FontId::monospace(font_size);
         let char_w = ui.ctx().fonts_mut(|f| f.glyph_width(&font, 'A')).max(1.0);
-        let line_h = 17.0;
+        // 17 points at the default 13: the strands stay as far apart for any size.
+        let line_h = font_size + 4.0;
         // On one line the residues run on without the groups of ten, so a position can be
         // worked out from the ruler by counting characters.
         let gap = if single { 0.0 } else { char_w * 0.8 };
@@ -443,11 +458,12 @@ pub fn show(
     let sites: &[crate::enzymes::MapSite] = if layers.enzymes { marks.sites } else { &[] };
     let primers: &[crate::enzymes::PrimerMark] = if layers.primers { marks.primers } else { &[] };
     let orfs: &[crate::enzymes::OrfMark] = if layers.orfs { marks.orfs } else { &[] };
+    let font_size = sequence_font_size(state.font_size);
     let (primers, primer_rows) = duplexes(
         primers,
         tails,
         &ui.ctx()
-            .fonts_mut(|f| f.glyph_width(&FontId::monospace(13.0), 'A'))
+            .fonts_mut(|f| f.glyph_width(&FontId::monospace(font_size), 'A'))
             .max(1.0),
     );
     let primers = primers.as_slice();
@@ -484,6 +500,7 @@ pub fn show(
         orf_rows,
         !codons.is_empty(),
         single_line,
+        font_size,
     );
     let metrics = Metrics { table, ..metrics };
     let lines = layout::line_count(len, metrics.per_line);
@@ -661,6 +678,7 @@ pub fn show(
                 line_geometry = Some(LineGeometry {
                     origin_x: rect.left() + metrics.number_w,
                     char_w: metrics.char_w,
+                    font_size: metrics.font.size,
                     clip_left: view_left,
                     clip_right: view_left + viewport.width(),
                 });

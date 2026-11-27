@@ -688,7 +688,15 @@ pub fn pane(
         );
         return action;
     };
-    let font = FontId::monospace(12.0);
+    // The sequence view's size (Preferences) and face (Hack), so letters fill the columns they
+    // share; the construct, which everything is aligned to, in bold.
+    let size = if geometry.font_size.is_finite() && geometry.font_size >= 1.0 {
+        geometry.font_size
+    } else {
+        crate::state::SEQUENCE_FONT_DEFAULT
+    };
+    let font = FontId::monospace(size);
+    let bold = crate::theme::mono_bold(size);
     let cw = geometry.char_w;
     let line = ui.fonts_mut(|f| f.row_height(&font)) + 4.0;
     let full = ui.available_rect_before_wrap();
@@ -772,7 +780,7 @@ pub fn pane(
                 pos2(cols.x(p) + cw / 2.0, y + 2.0),
                 Align2::CENTER_TOP,
                 c,
-                font.clone(),
+                bold.clone(),
                 t.text,
             );
         }
@@ -1013,10 +1021,11 @@ fn bases(
                 egui::StrokeKind::Inside,
             );
         }
-        let color = if same { t.text } else { t.error };
+        // The red box marks a difference; the letter stays in the text colour so it can be
+        // read on the box.
         let color = match quality {
-            Some(q) if q < FAINT_BELOW => color.gamma_multiply(0.45),
-            _ => color,
+            Some(q) if q < FAINT_BELOW => t.text.gamma_multiply(0.45),
+            _ => t.text,
         };
         painter.text(
             pos2(x + cols.cw / 2.0, top + 2.0),
@@ -1344,6 +1353,7 @@ mod tests {
                                 let line = LineGeometry {
                                     origin_x: r.left() + 200.0 - 450.0 * 8.0,
                                     char_w: 8.0,
+                                    font_size: 13.0,
                                     clip_left: r.left() + 200.0,
                                     clip_right: r.right(),
                                 };
@@ -1396,7 +1406,14 @@ mod tests {
             crate::offscreen::write_png(&path, &image).unwrap();
         }
         // Each channel colour of the trace shows up in the pane.
-        let has = |c: Color32| image.pixels.contains(&c);
+        // Near enough: the curves are thin anti-aliased lines, so a channel's exact colour may
+        // only show blended.
+        let has = |c: Color32| {
+            image.pixels.iter().any(|p| {
+                let d = |a: u8, b: u8| (i16::from(a) - i16::from(b)).abs();
+                d(p.r(), c.r()) + d(p.g(), c.g()) + d(p.b(), c.b()) < 40
+            })
+        };
         assert!(
             t.trace_channels.iter().filter(|c| has(**c)).count() >= 3,
             "the traces are drawn"
@@ -1454,6 +1471,7 @@ mod tests {
                 let line = LineGeometry {
                     origin_x: 280.0 - 250.0 * 8.5,
                     char_w: 8.5,
+                    font_size: 13.0,
                     clip_left: 280.0,
                     clip_right: 1300.0,
                 };

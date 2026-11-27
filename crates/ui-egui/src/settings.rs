@@ -47,6 +47,10 @@ pub struct Settings {
     /// Interface size (1 = normal), kept within Preferences' range.
     #[serde(deserialize_with = "lenient_scale")]
     pub ui_scale: f32,
+    /// Size of the residues in the sequence view and the Align with pane, in points, kept
+    /// within Preferences' range.
+    #[serde(deserialize_with = "lenient_sequence_font")]
+    pub sequence_font: f32,
     /// Reopen the window at its last size.
     #[serde(deserialize_with = "lenient_restore")]
     pub restore_window: bool,
@@ -109,6 +113,15 @@ fn lenient_scale<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f32, D::Error
     Ok(value
         .as_f64()
         .map_or(1.0, |z| crate::state::clamp_ui_scale(z as f32)))
+}
+
+fn lenient_sequence_font<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(value
+        .as_f64()
+        .map_or(crate::state::SEQUENCE_FONT_DEFAULT, |z| {
+            crate::state::clamp_sequence_font(z as f32)
+        }))
 }
 
 fn lenient_code<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
@@ -174,6 +187,7 @@ impl Default for Settings {
             map_background: CanvasColors::default(),
             preferences_page: PrefsPage::default(),
             ui_scale: 1.0,
+            sequence_font: crate::state::SEQUENCE_FONT_DEFAULT,
             restore_window: true,
             translation: Translation::default(),
             genetic_code: 1,
@@ -292,6 +306,7 @@ mod tests {
         let s = Settings {
             preferences_page: PrefsPage::Enzymes,
             ui_scale: 1.25,
+            sequence_font: 17.0,
             restore_window: false,
             translation: Translation::Six,
             genetic_code: 11,
@@ -316,7 +331,7 @@ mod tests {
         assert_eq!(load(&path), (s, None));
         std::fs::write(
             &path,
-            br#"{"theme": "dark", "preferences_page": "plugins", "ui_scale": 40,
+            br#"{"theme": "dark", "preferences_page": "plugins", "ui_scale": 40, "sequence_font": "big",
                 "restore_window": "yes", "window": {"width": "wide"},
                 "translation": "nine", "genetic_code": 7, "primer_binding": {"short": {"min_tm": "hot"}}}"#,
         )
@@ -332,6 +347,7 @@ mod tests {
             ),
             (PrefsPage::General, 2.0, true, None)
         );
+        assert_eq!(loaded.sequence_font, crate::state::SEQUENCE_FONT_DEFAULT);
         assert_eq!(
             (
                 loaded.translation,

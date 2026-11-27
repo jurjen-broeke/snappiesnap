@@ -4,6 +4,17 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.44.0 (2026-11-27)
+
+### Added
+
+- **The reference sequence in Align with is in bold**, so the construct everything is aligned to stands out from the reads under it. The bases in the pane use the same monospaced font and size as the sequence view above, letter for letter on the same columns.
+- **Sequence font size in Preferences** (DNA): 9 to 24 points, 13 by default. It sizes the residues in the sequence view and in the Align with pane together, so the reads stay lined up under the sequence at any size.
+
+### Fixed
+
+- **Differing bases in Align with are easy to read again.** They were red letters on a red box; the red box stays, and the letter is now in the normal text colour (black in the light theme, white in the dark theme).
+
 ## 0.43.0 (2026-11-27)
 
 ### Added

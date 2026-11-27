@@ -219,6 +219,7 @@ impl App {
             app.state.map_background = s.map_background.clone();
             app.state.preferences_page = s.preferences_page;
             app.state.ui_scale = crate::state::clamp_ui_scale(s.ui_scale);
+            app.state.sequence_font = crate::state::clamp_sequence_font(s.sequence_font);
             app.state.restore_window = s.restore_window;
             app.session.set_primer_binding(s.primer_binding);
             app.state.translation = s.translation;
@@ -454,6 +455,7 @@ impl App {
             map_background: self.state.map_background.clone(),
             preferences_page: self.state.preferences_page,
             ui_scale: self.state.ui_scale,
+            sequence_font: self.state.sequence_font,
             restore_window: self.state.restore_window,
             translation: self.state.translation,
             genetic_code: self.state.genetic_code,
@@ -2282,6 +2284,7 @@ impl App {
             if self.experiment_inputs.0 != Some(i) {
                 self.experiment_inputs = (Some(i), Default::default());
             }
+            self.experiment_inputs.1.cloning.seq.font_size = self.state.sequence_font;
             use crate::experiment_view::ExperimentAction;
             let folder = self.state.folder.clone();
             // What the lab holds: the enzyme set the map is drawn from, so a diagnostic digest
@@ -2885,6 +2888,7 @@ impl App {
         }
         let aligning = self.state.align_panel;
         self.seq_view.navigator_outside = aligning;
+        self.seq_view.font_size = self.state.sequence_font;
         if !aligning {
             self.seq_view.set_reads(Vec::new());
         }
@@ -5318,11 +5322,14 @@ mod translation_menu_tests {
         let construct = session.active_document_id().unwrap();
         let mut reads = Vec::new();
         for from in [100, 400, 700] {
+            // The middle read differs from the construct at 431.
+            let mut read = c[from..from + 500].to_string();
+            if from == 400 {
+                let was = read.as_bytes()[30];
+                read.replace_range(30..31, if was == b'A' { "C" } else { "A" });
+            }
             session
-                .execute(
-                    "new",
-                    json!({"name": format!("r{from}"), "residues": &c[from..from + 500]}),
-                )
+                .execute("new", json!({"name": format!("r{from}"), "residues": read}))
                 .unwrap();
             reads.push(session.active_document_id().unwrap());
         }
@@ -5387,11 +5394,30 @@ mod translation_menu_tests {
             );
             assert!(app.seq_view.line.is_some(), "the sequence is on one line");
         }
+        // The font size preference widens the columns of the sequence and the reads alike.
+        let width_at = |app: &mut App, size: f32| {
+            app.state.sequence_font = size;
+            let _ = app.render(1400, 900, 1.0).unwrap();
+            app.seq_view.line.map(|l| (l.char_w, l.font_size))
+        };
+        let small = width_at(&mut app, 10.0).unwrap();
+        let large = width_at(&mut app, 20.0).unwrap();
+        assert_eq!((small.1, large.1), (10.0, 20.0));
+        assert!((large.0 / small.0 - 2.0).abs() < 0.1, "{small:?} {large:?}");
+        app.state.sequence_font = crate::state::SEQUENCE_FONT_DEFAULT;
         if let Ok(path) = std::env::var("SNAPPIESNAP_ALIGN_PANE_PNG") {
             // Each render starts afresh, scrolled to the start: ask for the reads' stretch.
             app.seq_view.scroll_to = Some(420);
+            app.state.sequence_font = 18.0;
             let image = app.render(1400, 900, 4.0 / 3.0).unwrap();
             crate::offscreen::write_png(&path, &image).unwrap();
+            app.set_ui(crate::state::UiPatch {
+                theme: Some(crate::theme::ThemeChoice::Light),
+                ..Default::default()
+            });
+            app.seq_view.scroll_to = Some(420);
+            let image = app.render(1400, 900, 4.0 / 3.0).unwrap();
+            crate::offscreen::write_png(&path.replace(".png", "_light.png"), &image).unwrap();
         }
     }
 

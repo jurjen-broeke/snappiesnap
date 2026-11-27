@@ -75,6 +75,8 @@ impl PrefsPage {
 
 /// Smallest and largest interface size (egui's zoom factor).
 pub const UI_SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.75..=2.0;
+/// Sizes the sequence font can take, in points.
+pub const SEQUENCE_FONT_RANGE: std::ops::RangeInclusive<f32> = 9.0..=24.0;
 
 /// Width of the category list and of the labels in front of settings.
 const LIST_WIDTH: f32 = 160.0;
@@ -377,6 +379,31 @@ fn dna(ui: &mut Ui, t: &Tokens, state: &mut UiState) {
             });
         });
         note(ui, t, "The same as the buttons beside the map.");
+        row(
+            ui,
+            t,
+            "Sequence font size",
+            Some("The residues in the sequence view and of the reads aligned under it."),
+            |ui| {
+                let mut size = state.sequence_font;
+                let r = ui.add(
+                    egui::Slider::new(&mut size, SEQUENCE_FONT_RANGE)
+                        .step_by(1.0)
+                        .fixed_decimals(0)
+                        .suffix(" pt"),
+                );
+                if r.changed() {
+                    state.sequence_font = crate::state::clamp_sequence_font(size);
+                }
+                let default = crate::state::SEQUENCE_FONT_DEFAULT;
+                if ui
+                    .add_enabled(state.sequence_font != default, egui::Button::new("Reset"))
+                    .clicked()
+                {
+                    state.sequence_font = default;
+                }
+            },
+        );
     });
     group(ui, t, "Translation", |ui| {
         row(
@@ -889,6 +916,21 @@ mod tests {
                 ..Default::default()
             });
             assert_eq!(state.ui_scale, got, "{asked}");
+        }
+        // The sequence font: whole points within range, the default for nonsense.
+        for (asked, got) in [
+            (16.0, 16.0),
+            (10.4, 10.0),
+            (40.0, 24.0),
+            (2.0, 9.0),
+            (f32::NAN, 13.0),
+            (f32::INFINITY, 13.0),
+        ] {
+            state.apply(UiPatch {
+                sequence_font: Some(asked),
+                ..Default::default()
+            });
+            assert_eq!(state.sequence_font, got, "{asked}");
         }
     }
 }
