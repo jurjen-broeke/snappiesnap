@@ -60,6 +60,55 @@ pub struct SeqViewState {
     last_selection: Option<usize>,
     /// The overview under the one-line view.
     navigator: crate::seq_navigator::Navigator,
+    /// The app draws the navigator itself, under the Align with pane, rather than the view
+    /// drawing it under the sequence.
+    pub navigator_outside: bool,
+    /// Scroll the one-line view sideways by this many points on the next frame (a swipe in
+    /// the Align with pane, which follows this view).
+    pub scroll_by: f32,
+    /// Where the one line was drawn last frame, for the panes that line up under it.
+    pub line: Option<LineGeometry>,
+    /// What the navigator's box shows: the residues in view on the one line.
+    window: Option<(f32, f32)>,
+}
+
+/// Where the one-line view put its residues this frame: residue `p` has its left edge at
+/// `origin_x + p * char_w`, and residues are visible between `clip_left` and `clip_right`. The
+/// Align with pane draws its reads on the same columns, so a read's base sits right under the
+/// construct's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LineGeometry {
+    pub origin_x: f32,
+    pub char_w: f32,
+    pub clip_left: f32,
+    pub clip_right: f32,
+}
+
+impl SeqViewState {
+    /// The navigator's height for this molecule, when the app draws it (`navigator_outside`).
+    pub fn navigator_height(&mut self, m: &Molecule, revision: u64, features: bool) -> f32 {
+        self.navigator.prepare(m, revision, features)
+    }
+
+    /// Reads to show in the navigator, under the features.
+    pub fn set_reads(&mut self, reads: Vec<crate::seq_navigator::ReadSpan>) {
+        self.navigator.reads = reads;
+    }
+
+    /// Draw the navigator across `ui`'s width, for the stretch the one line showed last.
+    pub fn show_navigator(
+        &mut self,
+        ui: &mut Ui,
+        t: &Tokens,
+        m: &Molecule,
+        features: bool,
+        height: f32,
+        selection: Option<Range>,
+    ) {
+        let window = self.window;
+        self.navigator
+            .show(ui, t, m, features, height, window, selection);
+    }
 }
 
 /// Where to scroll so a selection can be seen, if anywhere: only when it has just moved, and
@@ -558,7 +607,11 @@ pub fn show(
     if single_line {
         // One line: allocate its whole width and draw only the window in view, so a chromosome
         // costs no more to show than a plasmid. The navigator takes the bottom of the view.
-        let nav_h = state.navigator.prepare(m, revision, layers.features);
+        let nav_h = if state.navigator_outside {
+            0.0
+        } else {
+            state.navigator.prepare(m, revision, layers.features)
+        };
         let width = metrics.line_width(len).max(ui.available_width());
         let mut area = egui::ScrollArea::horizontal().auto_shrink([false, false]);
         if let Some(pos) = state.scroll_to.take() {
@@ -571,7 +624,18 @@ pub fn show(
             let x = metrics.number_w + centre * metrics.char_w - ui.available_width() / 2.0;
             area = area.horizontal_scroll_offset(x.max(0.0));
         }
+        let by = std::mem::take(&mut state.scroll_by);
+        if by != 0.0
+            && by.is_finite()
+            && let Some(line) = state.line
+        {
+            // Swiped in the pane that follows this view: move by as much. Where the line
+            // started last frame gives the current offset.
+            let offset = line.clip_left - line.origin_x + metrics.number_w;
+            area = area.horizontal_scroll_offset((offset + by).max(0.0));
+        }
         let mut window: Option<(f32, f32)> = None;
+        let mut line_geometry: Option<LineGeometry> = None;
         let area_h = (ui.available_height() - nav_h).max(40.0);
         ui.allocate_ui(vec2(ui.available_width(), area_h), |ui| {
             area.show_viewport(ui, |ui, viewport| {
@@ -594,6 +658,12 @@ pub fn show(
                 // What is on screen, for the navigator's box.
                 let at = |x: f32| ((x - metrics.number_w) / metrics.char_w).clamp(0.0, len as f32);
                 window = Some((at(viewport.min.x), at(viewport.max.x)));
+                line_geometry = Some(LineGeometry {
+                    origin_x: rect.left() + metrics.number_w,
+                    char_w: metrics.char_w,
+                    clip_left: view_left,
+                    clip_right: view_left + viewport.width(),
+                });
                 // `left` is shifted so that column `first` lands where it belongs on the line.
                 let left = rect.left() + first as f32 * metrics.char_w;
                 draw_row(
@@ -613,10 +683,15 @@ pub fn show(
                 );
             });
         });
-        state
-            .navigator
-            .show(ui, t, m, layers.features, nav_h, window, selection);
+        state.window = window;
+        state.line = line_geometry;
+        if !state.navigator_outside {
+            state
+                .navigator
+                .show(ui, t, m, layers.features, nav_h, window, selection);
+        }
     } else {
+        state.line = None;
         let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
         if let Some(pos) = state.scroll_to.take() {
             let line = pos / metrics.per_line.max(1);

@@ -3,9 +3,9 @@
 //! file picker, from the open tabs, or by dropping files on it; the document's stored reads
 //! are listed by themselves). A pane under the sequence lays every ticked one out against the
 //! document, column by column, with its differences marked and its trace drawn under its
-//! bases (fold a trace away to keep one line of bases). A navigator under the pane shows the
-//! whole construct, where each read lies on it and which stretch is in view; click or drag it
-//! to move there.
+//! bases (fold a trace away to keep one line of bases). The pane draws on the columns of the
+//! one-line sequence view above it, so the two scroll as one; the navigator at the bottom of
+//! the view shows the whole construct, where each read lies on it and the stretch in view.
 //!
 //! The alignment is the `check_reads` command's (both strands, poor ends trimmed, the read
 //! kept if at least 80% identical), so agents see the same answer.
@@ -20,15 +20,17 @@ use serde_json::{Value, json};
 use snappiesnap_engine::Session;
 use snappiesnap_engine::doc::{Channel, Molecule};
 
+use crate::seq_navigator::ReadSpan;
+use crate::seqview::LineGeometry;
 use crate::state::{AlignEntry, AlignSource};
 use crate::theme::Tokens;
 
-/// Width of the names column of the pane.
-pub const NAME_W: f32 = 200.0;
-/// Height of a trace under its read.
+/// The narrowest the names column of the pane gets.
+const MIN_NAME_W: f32 = 120.0;
+/// Height of a trace under its read, when there is room.
 const TRACE_H: f32 = 76.0;
-/// Height of the navigator.
-const NAV_H: f32 = 34.0;
+/// The shortest a trace is squeezed to before the reads scroll instead.
+const MIN_TRACE_H: f32 = 36.0;
 /// Width of the panel listing the sequences.
 pub const PANEL_W: f32 = 232.0;
 /// A call below this quality is drawn faint.
@@ -67,10 +69,12 @@ pub struct AlignWithView {
     shown: usize,
     /// The list row picked for Move and Remove.
     picked: Option<usize>,
-    /// The document's selection when last seen, so one made elsewhere is followed.
-    seen_selection: Option<(u64, usize, usize)>,
     /// Where the panel is on screen, so a file dropped on it joins the list.
     pub panel_rect: Option<Rect>,
+    /// Where the pane was drawn last frame.
+    pub pane_rect: Option<Rect>,
+    /// Points the sequence view should scroll sideways: the user swiped in the pane.
+    pub scroll_by: f32,
 }
 
 /// A stable key for a source: files by path, tabs by id, stored reads by index.
@@ -595,8 +599,10 @@ struct Row<'a> {
     read: &'a Value,
 }
 
-/// The pane under the sequence: the construct, then each ticked sequence with its trace, then
-/// the navigator.
+/// The pane under the sequence: the construct, then each ticked sequence with its trace, on
+/// the columns of the one-line sequence view above (`line_geometry`). It fills the room it is
+/// given and never asks for more: the traces shrink to fit, and only if even short ones don't
+/// fit do the reads scroll up and down.
 #[allow(clippy::too_many_arguments)]
 pub fn pane(
     ui: &mut Ui,
@@ -605,8 +611,10 @@ pub fn pane(
     id: u64,
     entries: &mut [AlignEntry],
     view: &mut AlignWithView,
+    line_geometry: Option<LineGeometry>,
 ) -> Option<AlignWithAction> {
     let doc = session.document_by_id(id)?;
+    view.pane_rect = Some(ui.max_rect());
     let mut action = None;
     // Align again when the ticked sequences or the construct's bases change.
     let request = params(session, id, entries);
@@ -669,27 +677,36 @@ pub fn pane(
     if len == 0 {
         return action;
     }
+    // The reads sit on the sequence view's own columns, so each base is right under the
+    // construct's above, and the two move as one.
+    let Some(geometry) = line_geometry.filter(|g| {
+        g.char_w.is_finite() && g.char_w >= 1.0 && g.origin_x.is_finite() && g.clip_left.is_finite()
+    }) else {
+        ui.label(
+            RichText::new("Show the sequence on one line to see the reads under it.")
+                .color(t.text_muted),
+        );
+        return action;
+    };
     let font = FontId::monospace(12.0);
-    let (line, cw) = ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, 'A').max(1.0)));
-    let line = line + 4.0;
+    let cw = geometry.char_w;
+    let line = ui.fonts_mut(|f| f.row_height(&font)) + 4.0;
     let full = ui.available_rect_before_wrap();
-    let seq_w = (full.width() - NAME_W - 14.0).max(cw * 10.0);
-    let shown = (seq_w / cw).floor().max(1.0) as usize;
+    // The names column runs up to where the sequence view starts drawing residues.
+    let x0 = geometry
+        .clip_left
+        .max(full.left() + MIN_NAME_W)
+        .min((full.right() - cw).max(full.left()));
+    let name_w = x0 - full.left();
+    let x1 = geometry.clip_right.min(full.right());
+    // Negative while the start of the line, with the sequence view's gutter, is in view.
+    let left = f64::from((x0 - geometry.origin_x) / cw);
+    let left = if left.is_finite() { left } else { 0.0 };
+    let shown = (((x1 - x0) / cw).ceil().max(1.0)) as usize;
+    view.left = left;
     view.shown = shown;
-    let max_left = len.saturating_sub(shown) as f64;
-
-    // Follow a selection made in the sequence above, or anywhere else.
-    if let Some(sel) = doc.selection {
-        let seen = (id, sel.start, sel.end);
-        if view.seen_selection != Some(seen) {
-            view.seen_selection = Some(seen);
-            let p = sel.start as f64;
-            if p < view.left || p >= view.left + shown as f64 {
-                view.left = p - (shown / 3) as f64;
-            }
-        }
-    }
-    // Sideways scrolling: a trackpad swipe, or the wheel with Shift held.
+    // Sideways scrolling, a trackpad swipe or the wheel with Shift held, moves the sequence
+    // view, and these columns with it.
     if ui.rect_contains_pointer(full) {
         let d = ui.input(|i| i.smooth_scroll_delta);
         let sideways = if d.x != 0.0 {
@@ -699,19 +716,15 @@ pub fn pane(
         } else {
             0.0
         };
-        if sideways != 0.0 {
-            view.left -= f64::from(sideways / cw);
+        if sideways.is_finite() && sideways != 0.0 {
+            view.scroll_by -= sideways;
         }
     }
-    if !view.left.is_finite() {
-        view.left = 0.0;
-    }
-    view.left = view.left.clamp(0.0, max_left.max(0.0));
-    let from = view.left.floor().max(0.0) as usize;
+    let from = (left.floor().max(0.0) as usize).min(len);
     let to = from.saturating_add(shown + 2).min(len);
     let cols = Columns {
-        left: view.left,
-        x0: full.left() + NAME_W,
+        left,
+        x0,
         cw,
         from,
         to,
@@ -766,8 +779,8 @@ pub fn pane(
         // Keep the names column clear of residues scrolled under it.
         painter.rect_filled(
             Rect::from_min_max(
-                pos2(header.left() + NAME_W - 4.0, header.top()),
-                pos2(header.left() + NAME_W, header.bottom()),
+                pos2(header.left() + name_w - 4.0, header.top()),
+                pos2(header.left() + name_w, header.bottom()),
             ),
             0.0,
             t.canvas,
@@ -781,13 +794,30 @@ pub fn pane(
     }
     ui.add_space(2.0);
 
-    // The reads, scrolling up and down under the construct; the navigator stays at the bottom.
-    // Under the reads come the item gap, 4 points, the gap again and the navigator. They must
-    // add up to exactly the room left: a resizable panel keeps the size its contents take, so
-    // a point too many grows the pane by a point every frame.
+    // The reads, in the room left under the construct. The traces share it, as tall as
+    // TRACE_H and as short as MIN_TRACE_H; only when even short ones don't fit do the reads
+    // scroll up and down.
+    let reads_h = (full.bottom() - ui.cursor().top()).max(0.0);
     let gap = ui.spacing().item_spacing.y;
-    let below = gap + 4.0 + gap + NAV_H;
-    let reads_h = (full.bottom() - ui.cursor().top() - below).max(0.0);
+    let (mut fixed, mut open_traces) = (0.0_f32, 0.0_f32);
+    for row in &rows {
+        let open = entries.get(row.entry).is_some_and(|e| !e.collapsed)
+            && row.read.get("error").is_none_or(Value::is_null);
+        fixed += line + 4.0 + gap;
+        if open {
+            open_traces += 1.0;
+        }
+    }
+    let trace_h = if open_traces > 0.0 {
+        let each = (reads_h - fixed) / open_traces;
+        if each.is_finite() {
+            each.clamp(MIN_TRACE_H, TRACE_H)
+        } else {
+            TRACE_H
+        }
+    } else {
+        TRACE_H
+    };
     let mut toggle = None;
     egui::ScrollArea::vertical()
         .id_salt("align-with-rows")
@@ -808,7 +838,7 @@ pub fn pane(
                 let read = row.read;
                 let placed = read.get("error").is_none_or(Value::is_null);
                 let open = placed && !entry.collapsed;
-                let h = line + if open { TRACE_H } else { 0.0 } + 4.0;
+                let h = line + if open { trace_h } else { 0.0 } + 4.0;
                 let (rect, resp) =
                     ui.allocate_exact_size(vec2(full.width(), h), Sense::click());
                 if !ui.is_rect_visible(rect) {
@@ -816,7 +846,7 @@ pub fn pane(
                 }
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(rect, 0.0, t.canvas);
-                let name_rect = Rect::from_min_size(rect.min, vec2(NAME_W, line));
+                let name_rect = Rect::from_min_size(rect.min, vec2(name_w, line));
                 let name = read.get("name").and_then(Value::as_str).unwrap_or("");
                 // The fold triangle, the name and the strand.
                 if placed {
@@ -920,10 +950,6 @@ pub fn pane(
     {
         e.collapsed = !e.collapsed;
     }
-    ui.add_space(4.0);
-    if let Some(left) = navigator(ui, t, &doc.molecule, &rows, &cols, shown, full.width()) {
-        view.left = left.clamp(0.0, max_left.max(0.0));
-    }
     action
 }
 
@@ -1023,6 +1049,17 @@ fn info(painter: &egui::Painter, t: &Tokens, read: &Value, strip: Rect) {
     }
     lines.push(plural(subs, "mismatch", "mismatches"));
     lines.push(plural(gaps, "gap or insertion", "gaps or insertions"));
+    // A short trace leaves room for fewer lines: run the facts together rather than cut them.
+    let room = ((strip.height() - 4.0) / 15.0).floor();
+    let room = if room.is_finite() {
+        room.max(1.0) as usize
+    } else {
+        1
+    };
+    if room < lines.len() {
+        let per = lines.len().div_ceil(room);
+        lines = lines.chunks(per).map(|c| c.join(" \u{b7} ")).collect();
+    }
     for (k, text) in lines.iter().enumerate() {
         painter.text(
             pos2(strip.left() + 18.0, strip.top() + 4.0 + 15.0 * k as f32),
@@ -1107,40 +1144,25 @@ fn trace(
     }
 }
 
-/// The whole construct as a bar: where each shown read lies, its differences, and the stretch
-/// in view. Clicking or dragging moves the view there; the new first column is returned.
-fn navigator(
-    ui: &mut Ui,
-    t: &Tokens,
-    m: &Molecule,
-    rows: &[Row],
-    cols: &Columns,
-    shown: usize,
-    width: f32,
-) -> Option<f64> {
-    let len = m.len();
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, NAV_H), Sense::click_and_drag());
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 3.0, t.panel);
-    if len == 0 {
-        return None;
-    }
-    let (l, r) = (rect.left() + NAME_W, rect.right() - 10.0);
-    let x_of = |p: f64| l + (r - l) * (p / len as f64) as f32;
-    painter.text(
-        pos2(rect.left() + 6.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        format!("1..{} bp", grouped(len as u64)),
-        FontId::proportional(11.0),
-        t.text_muted,
-    );
-    let axis = rect.bottom() - 8.0;
-    painter.line_segment([pos2(l, axis), pos2(r, axis)], Stroke::new(2.0, t.backbone));
-    // Each read as a thin lane above the axis, its differences as ticks on it.
-    let lanes = rows.len().clamp(1, 5);
-    let lane_h = ((axis - rect.top() - 6.0) / lanes as f32).min(5.0);
-    for (k, row) in rows.iter().enumerate() {
-        let read = row.read;
+/// The ticked reads that placed, for the navigator under the sequence view: where each lies
+/// on the construct (`len` residues) and where it differs.
+pub fn read_spans(view: &AlignWithView, entries: &[AlignEntry], len: usize) -> Vec<ReadSpan> {
+    let Some(Ok(r)) = &view.result else {
+        return Vec::new();
+    };
+    let reads = r.get("reads").and_then(Value::as_array);
+    let mut out = Vec::new();
+    for entry in entries.iter().filter(|e| e.on) {
+        let Some(read) = reads
+            .into_iter()
+            .flatten()
+            .find(|x| source_of(x).as_ref() == Some(&entry.source))
+        else {
+            continue;
+        };
+        if !read.get("error").is_none_or(Value::is_null) {
+            continue;
+        }
         let (Some(a), Some(b), Some(n)) = (
             to_usize(read.get("start")),
             to_usize(read.get("end")),
@@ -1148,12 +1170,7 @@ fn navigator(
         ) else {
             continue;
         };
-        let y = axis - 4.0 - lane_h * (k % lanes) as f32;
-        let color = if read.get("strand").and_then(Value::as_str) == Some("forward") {
-            t.feature_color(0)
-        } else {
-            t.feature_color(1)
-        };
+        let (a, b) = (a.min(len), b.min(len));
         let pieces = if n >= len {
             vec![(0, len)]
         } else if a <= b {
@@ -1161,55 +1178,26 @@ fn navigator(
         } else {
             vec![(a, len), (0, b)]
         };
-        for (pa, pb) in pieces {
-            painter.line_segment(
-                [pos2(x_of(pa as f64), y), pos2(x_of(pb as f64), y)],
-                Stroke::new(lane_h.max(2.0) - 1.0, color),
-            );
-        }
-        for d in read
+        let differences = read
             .get("differences")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-        {
-            let Some(p) = to_usize(d.get("position").or_else(|| d.get("start"))) else {
-                continue;
-            };
-            let x = x_of(p as f64);
-            painter.line_segment(
-                [
-                    pos2(x, y - lane_h / 2.0 - 1.0),
-                    pos2(x, y + lane_h / 2.0 + 1.0),
-                ],
-                Stroke::new(1.0, t.error),
-            );
-        }
+            .filter_map(|d| to_usize(d.get("position").or_else(|| d.get("start"))))
+            .filter(|&p| p < len)
+            .collect();
+        out.push(ReadSpan {
+            name: read
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            pieces,
+            forward: read.get("strand").and_then(Value::as_str) == Some("forward"),
+            differences,
+        });
     }
-    // The stretch in view.
-    let window = Rect::from_min_max(
-        pos2(x_of(cols.left), rect.top() + 3.0),
-        pos2(
-            x_of((cols.left + shown as f64).min(len as f64)).max(x_of(cols.left) + 3.0),
-            rect.bottom() - 3.0,
-        ),
-    );
-    painter.rect_filled(window, 2.0, t.accent.gamma_multiply(0.18));
-    painter.rect_stroke(
-        window,
-        2.0,
-        Stroke::new(1.5, t.accent),
-        egui::StrokeKind::Inside,
-    );
-    let resp = resp.on_hover_text("The whole construct: click or drag to move the view there");
-    if (resp.clicked() || resp.dragged())
-        && let Some(pos) = resp.interact_pointer_pos()
-        && r > l
-    {
-        let f = f64::from(((pos.x - l) / (r - l)).clamp(0.0, 1.0));
-        return Some(f * len as f64 - shown as f64 / 2.0);
-    }
-    None
+    out
 }
 
 #[cfg(test)]
@@ -1350,8 +1338,18 @@ mod tests {
                         ui.horizontal_top(|ui| {
                             let _ = panel(ui, &t, session, construct_id, entries, view, false);
                             ui.vertical(|ui| {
+                                // The sequence view above shows residue 450 at the left of its
+                                // residues, 200 points in.
+                                let r = ui.max_rect();
+                                let line = LineGeometry {
+                                    origin_x: r.left() + 200.0 - 450.0 * 8.0,
+                                    char_w: 8.0,
+                                    clip_left: r.left() + 200.0,
+                                    clip_right: r.right(),
+                                };
                                 // Offscreen frames may run twice: keep what any of them asked.
-                                if let Some(a) = pane(ui, &t, session, construct_id, entries, view)
+                                if let Some(a) =
+                                    pane(ui, &t, session, construct_id, entries, view, Some(line))
                                 {
                                     asked = Some(a);
                                 }
@@ -1415,13 +1413,12 @@ mod tests {
         assert_eq!(asked, None);
     }
 
-    /// The pane fits the panel it is given. Before, it laid out a few points more than the
-    /// panel's height, the resizable panel kept that size, and with every repaint (each mouse
-    /// move) the pane grew until it squeezed the sequence above it to nothing. Checked as the
-    /// app shows it: in a resizable bottom panel, over many frames, at 1× and at the 1.33×
-    /// of a zoomed browser, from the smallest panel to a tall one.
+    /// The pane draws within the room it is given and never asks for more: the traces shrink
+    /// to fit, and the reads scroll only when even short traces don't fit. (Sized by its
+    /// contents, it once crept up or down a little with every repaint.) Its columns are the
+    /// sequence view's, and a swipe over it is handed to the sequence view.
     #[test]
-    fn pane_keeps_its_height_frame_after_frame() {
+    fn pane_fits_its_room_on_the_sequence_columns() {
         let c = construct(1200);
         let mut session = Session::new();
         session.open_document(Document::new(
@@ -1441,7 +1438,7 @@ mod tests {
         session.switch_document(0).unwrap();
         let t = Tokens::dark();
         for scale in [1.0_f32, 4.0 / 3.0] {
-            for panel_h in [140.0_f32, 220.0, 480.0] {
+            for room in [60.0_f32, 140.0, 220.0, 480.0] {
                 let mut entries: Vec<AlignEntry> = reads
                     .iter()
                     .map(|&id| AlignEntry {
@@ -1453,8 +1450,14 @@ mod tests {
                 let mut view = AlignWithView::default();
                 let ctx = egui::Context::default();
                 t.apply(&ctx);
-                let mut heights = Vec::new();
-                for frame in 0..40u32 {
+                let area = Rect::from_min_size(pos2(0.0, 300.0), vec2(1300.0, room));
+                let line = LineGeometry {
+                    origin_x: 280.0 - 250.0 * 8.5,
+                    char_w: 8.5,
+                    clip_left: 280.0,
+                    clip_right: 1300.0,
+                };
+                for frame in 0..6u32 {
                     let mut input = egui::RawInput {
                         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1300.0, 900.0))),
                         time: Some(f64::from(frame) * 0.1),
@@ -1465,33 +1468,49 @@ mod tests {
                         .entry(egui::ViewportId::ROOT)
                         .or_default()
                         .native_pixels_per_point = Some(scale);
+                    if frame == 5 {
+                        input
+                            .events
+                            .push(egui::Event::PointerMoved(pos2(700.0, 300.0 + room / 2.0)));
+                        input.events.push(egui::Event::MouseWheel {
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: vec2(-40.0, 0.0),
+                            modifiers: egui::Modifiers::NONE,
+                            phase: egui::TouchPhase::Move,
+                            source: egui::MouseWheelSource::Trackpad,
+                        });
+                    }
                     let mut asked = None;
-                    let mut height = 0.0;
+                    let mut used = Rect::NOTHING;
                     let mut out = ctx.run_ui(input, |ui| {
-                        let room = ui.available_height();
-                        let shown = egui::Panel::bottom("align-with-pane")
-                            .resizable(true)
-                            .default_size(panel_h)
-                            .min_size(140.0)
-                            .max_size((room - 120.0).max(160.0))
-                            .show(ui, |ui| {
-                                pane(ui, &t, &session, construct_id, &mut entries, &mut view)
-                            });
-                        asked = shown.inner;
-                        height = shown.response.rect.height();
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+                            asked = pane(
+                                ui,
+                                &t,
+                                &session,
+                                construct_id,
+                                &mut entries,
+                                &mut view,
+                                Some(line),
+                            );
+                            used = ui.min_rect();
+                        });
                     });
                     out.textures_delta.clear();
                     if let Some(AlignWithAction::Check(p)) = asked {
                         view.set_result(session.execute("check_reads", p).map_err(|e| e.message));
                     }
-                    heights.push(height);
+                    if frame >= 2 {
+                        assert!(
+                            used.bottom() <= area.bottom() + 0.01,
+                            "scale {scale}, room {room}: the pane takes {used:?} of {area:?}"
+                        );
+                    }
                 }
-                // A few frames to align and draw, then the height holds.
-                let settled = &heights[5..];
-                assert!(
-                    settled.iter().all(|h| (h - settled[0]).abs() < 0.01),
-                    "scale {scale}, panel {panel_h}: the pane keeps growing: {heights:?}"
-                );
+                // Residue 250 is at the left of the residues, as in the sequence view.
+                assert!((view.left - 250.0).abs() < 1e-3, "{}", view.left);
+                // The swipe is passed on (smoothed by egui, so some of it at least).
+                assert!(view.scroll_by > 0.0, "{}", view.scroll_by);
             }
         }
     }

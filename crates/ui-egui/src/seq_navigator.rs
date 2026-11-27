@@ -3,7 +3,8 @@
 //! colours, and a box marking the part of the line on screen. Clicking or dragging in it moves
 //! the view there, and hovering names the features under the pointer.
 //!
-//! It shows the document's own molecule only. Alignments shown beside it are left out.
+//! Under the features it can show reads aligned to the molecule (the Align with pane): one
+//! thin lane each, in the strand's colour, with their differences marked.
 
 use eframe::egui::{Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use snappiesnap_engine::doc::{Molecule, Range};
@@ -23,6 +24,19 @@ const BACKBONE_H: f32 = 3.0;
 /// still there to find.
 const MIN_FEATURE_W: f32 = 2.0;
 const MIN_WINDOW_W: f32 = 6.0;
+/// Read lanes drawn; further reads share the last one.
+const READ_LANES: usize = 6;
+
+/// A read aligned to the molecule, as the navigator draws it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ReadSpan {
+    pub name: String,
+    /// The stretches of the molecule it covers: two when it runs across the origin.
+    pub pieces: Vec<(usize, usize)>,
+    pub forward: bool,
+    /// Molecule positions where it differs.
+    pub differences: Vec<usize>,
+}
 
 /// Navigator state that lives across frames.
 #[derive(Debug, Default, Clone)]
@@ -33,6 +47,10 @@ pub struct Navigator {
     grab: Option<f32>,
     /// Centre the view on this position on the next frame: the user clicked or dragged here.
     pub target: Option<f32>,
+    /// Reads to draw under the features (empty: none).
+    pub reads: Vec<ReadSpan>,
+    /// Feature lanes drawn, as `prepare` worked out.
+    feature_lanes: usize,
 }
 
 impl Navigator {
@@ -51,7 +69,8 @@ impl Navigator {
         } else {
             0
         };
-        height(lanes)
+        self.feature_lanes = lanes;
+        height(lanes) + self.reads.len().min(READ_LANES) as f32 * (LANE_H + LANE_GAP)
     }
 
     fn bars(&self) -> &[TrackBar] {
@@ -120,6 +139,28 @@ impl Navigator {
                 painter.rect_filled(feature_rect(b), 1.0, t.color_at(m, b.feature));
             }
         }
+        // Reads, a lane each under the features, their differences as ticks across them.
+        let reads_top = lanes_top + self.feature_lanes as f32 * (LANE_H + LANE_GAP);
+        let read_lane = |k: usize| {
+            let y = reads_top + k.min(READ_LANES - 1) as f32 * (LANE_H + LANE_GAP);
+            (y, y + LANE_H)
+        };
+        for (k, read) in self.reads.iter().enumerate() {
+            let (y0, y1) = read_lane(k);
+            let colour = t.feature_color(if read.forward { 0 } else { 1 });
+            for &(a, b) in &read.pieces {
+                let (x0, x1) = strip.span(a, b, MIN_FEATURE_W);
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(x0, y0 + 1.0), pos2(x1, y1 - 1.0)),
+                    1.0,
+                    colour,
+                );
+            }
+            for &d in &read.differences {
+                let x = strip.x(d as f32 + 0.5);
+                painter.vline(x, y0 - 1.0..=y1 + 1.0, Stroke::new(1.0, t.error));
+            }
+        }
 
         // The part of the line on screen.
         let shown = window.map(|(a, b)| {
@@ -170,6 +211,16 @@ impl Navigator {
                             names.push(name.clone());
                         }
                     }
+                }
+            }
+            for (k, read) in self.reads.iter().enumerate() {
+                let (y0, y1) = read_lane(k);
+                let on = read.pieces.iter().any(|&(a, b)| {
+                    let (x0, x1) = strip.span(a, b, MIN_FEATURE_W);
+                    hit(Rect::from_min_max(pos2(x0, y0), pos2(x1, y1)), p)
+                });
+                if on && !names.contains(&read.name) {
+                    names.push(read.name.clone());
                 }
             }
             let mut text = format!("Position {at}");

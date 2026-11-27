@@ -4,6 +4,17 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.43.0 (2026-11-27)
+
+### Added
+
+- **The reads in Align with move with the sequence.** The aligned reads are drawn on the same columns as the one-line sequence above them, so every base of a read sits right under the construct's, and scrolling either one moves both. One navigator along the bottom serves both: it shows the construct's features, where each read lies with its differences marked, and the stretch in view; click or drag it to move there.
+- Opening Align with puts the sequence on one line, as the reads need; turning one-line view off closes Align with.
+
+### Fixed
+
+- **The Align with pane no longer drifts.** At some zoom levels (such as a zoomed browser) the pane under the sequence slid down a little with every redraw. The view is now split in fixed halves, sequence above and reads below; only sideways scrolling moves them. When many reads are ticked, their traces get shorter to fit.
+
 ## 0.42.1 (2026-11-26)
 
 ### Fixed

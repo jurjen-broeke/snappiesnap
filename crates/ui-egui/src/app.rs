@@ -2573,6 +2573,10 @@ impl App {
                 .clicked()
             {
                 self.state.sequence_single_line = !self.state.sequence_single_line;
+                // The reads line up under the one line: wrapping the sequence closes them.
+                if !self.state.sequence_single_line {
+                    self.state.align_panel = false;
+                }
             }
             if self.state.view == View::Sequence
                 && layer_toggle(
@@ -2870,41 +2874,100 @@ impl App {
             Vec::new()
         };
         let mut actions = Vec::new();
-        // The alignment takes the bottom of the view, the sequence what is left above it.
+        // With Align with open, the view is split in fixed parts: the sequence on one line in
+        // the top half, the reads on the same columns in the bottom half, and one navigator
+        // under both. The parts are laid out here, not sized by what they contain, so nothing
+        // can creep from frame to frame.
+        // However Align with was opened (toggle, menu, a dropped file, the control channel),
+        // the sequence goes on one line for it.
         if self.state.align_panel {
-            self.align_with_pane(ui);
+            self.state.sequence_single_line = true;
         }
-        ui.horizontal_top(|ui| {
-            if self.state.align_panel {
-                self.align_with_panel(ui);
-            }
-            self.layer_column(ui);
-            let query = self.enzyme_query();
-            let marks = self.site_cache.get(&self.session, &query);
-            let Some(doc) = self.session.document() else {
-                return;
-            };
-            // The sequence takes all the room right of the toggles.
-            let size = ui.available_size();
-            ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
-                ui.set_min_size(size);
-                actions = seqview::show(
-                    ui,
-                    &t,
-                    &doc.molecule,
-                    doc.selection,
-                    &mut self.seq_view,
-                    revision,
-                    &marks,
-                    layers,
-                    frames,
-                    table,
-                    &found,
-                    self.state.primer_tails,
-                    self.state.sequence_single_line,
-                );
+        let aligning = self.state.align_panel;
+        self.seq_view.navigator_outside = aligning;
+        if !aligning {
+            self.seq_view.set_reads(Vec::new());
+        }
+        let full = ui.available_rect_before_wrap();
+        let mut seq_rect = full;
+        let mut lower: Option<(Rect, Rect)> = None;
+        if aligning
+            && let Some(id) = self.session.active_document_id()
+            && let Some(doc) = self.session.document()
+        {
+            let entries = self.state.align_list(id).cloned().unwrap_or_default();
+            self.seq_view.set_reads(crate::align_with::read_spans(
+                &self.align_with,
+                &entries,
+                doc.molecule.len(),
+            ));
+            let nav_h = self
+                .seq_view
+                .navigator_height(&doc.molecule, revision, layers.features)
+                .min(full.height());
+            let (top, bottom) = split_for_alignment(full, nav_h);
+            seq_rect = top;
+            lower = Some(bottom);
+        }
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(seq_rect)
+                .layout(Layout::left_to_right(Align::Min)),
+            |ui| {
+                ui.shrink_clip_rect(seq_rect);
+                if self.state.align_panel {
+                    self.align_with_panel(ui);
+                }
+                self.layer_column(ui);
+                let query = self.enzyme_query();
+                let marks = self.site_cache.get(&self.session, &query);
+                let Some(doc) = self.session.document() else {
+                    return;
+                };
+                // The sequence takes all the room right of the toggles.
+                let size = ui.available_size();
+                ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
+                    ui.set_min_size(size);
+                    actions = seqview::show(
+                        ui,
+                        &t,
+                        &doc.molecule,
+                        doc.selection,
+                        &mut self.seq_view,
+                        revision,
+                        &marks,
+                        layers,
+                        frames,
+                        table,
+                        &found,
+                        self.state.primer_tails,
+                        self.state.sequence_single_line,
+                    );
+                });
+            },
+        );
+        if let Some((pane_rect, nav_rect)) = lower {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(pane_rect), |ui| {
+                ui.shrink_clip_rect(pane_rect);
+                self.align_with_pane(ui);
             });
-        });
+            ui.scope_builder(egui::UiBuilder::new().max_rect(nav_rect), |ui| {
+                ui.shrink_clip_rect(nav_rect);
+                if let Some(doc) = self.session.document() {
+                    self.seq_view.show_navigator(
+                        ui,
+                        &t,
+                        &doc.molecule,
+                        layers.features,
+                        nav_rect.height(),
+                        doc.selection,
+                    );
+                }
+            });
+            // A swipe over the reads moves the sequence, and the reads with it.
+            self.seq_view.scroll_by += std::mem::take(&mut self.align_with.scroll_by);
+        }
+        ui.advance_cursor_after_rect(full);
         for action in actions {
             match action {
                 SeqAction::Select(range) => {
@@ -2991,24 +3054,22 @@ impl App {
         }
     }
 
-    /// The "Align with" pane under the sequence, in a panel the user can make taller.
+    /// The "Align with" pane under the sequence, in the room it is given.
     fn align_with_pane(&mut self, ui: &mut egui::Ui) {
         let Some(id) = self.session.active_document_id() else {
             return;
         };
         let t = self.tokens;
-        let room = ui.available_height();
         let mut entries = self
             .state
             .align_list(id)
             .map(std::mem::take)
             .unwrap_or_default();
-        let action = egui::Panel::bottom("align-with-pane")
-            .resizable(true)
-            .default_size((room * 0.55).max(220.0))
-            .min_size(140.0)
-            .max_size((room - 120.0).max(160.0))
+        let action = egui::Frame::new()
+            .fill(t.panel)
+            .inner_margin(egui::Margin::symmetric(0, 4))
             .show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
                 crate::align_with::pane(
                     ui,
                     &t,
@@ -3016,6 +3077,7 @@ impl App {
                     id,
                     &mut entries,
                     &mut self.align_with,
+                    self.seq_view.line,
                 )
             })
             .inner;
@@ -4531,6 +4593,28 @@ impl TabUi {
     }
 }
 
+/// Split the sequence view's room for Align with: the sequence in the top half, the reads in
+/// the bottom half, and a strip of `nav_h` under both for the navigator. Whole points, so the
+/// parts don't shift with rounding; returns (sequence, (reads, navigator)).
+fn split_for_alignment(full: Rect, nav_h: f32) -> (Rect, (Rect, Rect)) {
+    let nav_h = if nav_h.is_finite() {
+        nav_h.max(0.0).min(full.height().max(0.0))
+    } else {
+        0.0
+    };
+    let nav_top = (full.bottom() - nav_h).max(full.top());
+    let split = (full.top() + ((nav_top - full.top()) / 2.0).floor())
+        .max(full.top())
+        .min(nav_top);
+    let top = Rect::from_min_max(full.min, egui::pos2(full.right(), split));
+    let reads = Rect::from_min_max(
+        egui::pos2(full.left(), split),
+        egui::pos2(full.right(), nav_top),
+    );
+    let nav = Rect::from_min_max(egui::pos2(full.left(), nav_top), full.max);
+    (top, (reads, nav))
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use snappiesnap_engine::script;
@@ -5212,6 +5296,103 @@ mod translation_menu_tests {
         assert_eq!(app.session.documents().len(), 3);
         let product = app.session.document().expect("the product");
         assert_eq!(product.molecule.len(), 3950);
+    }
+
+    /// The Align with pane holds still while the pointer moves and the window is redrawn.
+    #[test]
+    fn align_with_pane_holds_still() {
+        let mut x: u32 = 777;
+        let c: String = (0..1500)
+            .map(|_| {
+                x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
+                b"ACGT"[((x >> 16) % 4) as usize] as char
+            })
+            .collect();
+        let mut session = Session::new();
+        session
+            .execute(
+                "new",
+                json!({"name": "pHold", "residues": c, "topology": "circular"}),
+            )
+            .unwrap();
+        let construct = session.active_document_id().unwrap();
+        let mut reads = Vec::new();
+        for from in [100, 400, 700] {
+            session
+                .execute(
+                    "new",
+                    json!({"name": format!("r{from}"), "residues": &c[from..from + 500]}),
+                )
+                .unwrap();
+            reads.push(session.active_document_id().unwrap());
+        }
+        session.switch_document(0).unwrap();
+        let mut app = App::headless(session);
+        app.set_ui(crate::state::UiPatch {
+            view: Some(View::Sequence),
+            sequence_single_line: Some(true),
+            ..Default::default()
+        });
+        app.state.align_panel = true;
+        if let Some(list) = app.state.align_list(construct) {
+            for id in reads {
+                list.push(crate::state::AlignEntry {
+                    source: crate::state::AlignSource::Document(id),
+                    on: true,
+                    collapsed: false,
+                });
+            }
+        }
+        for scale in [1.0_f32, 4.0 / 3.0] {
+            let ctx = egui::Context::default();
+            app.tokens.apply(&ctx);
+            let mut tops = Vec::new();
+            for frame in 0..60u32 {
+                let mut input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    time: Some(f64::from(frame) * 0.05),
+                    ..Default::default()
+                };
+                input
+                    .viewports
+                    .entry(egui::ViewportId::ROOT)
+                    .or_default()
+                    .native_pixels_per_point = Some(scale);
+                input.events.push(egui::Event::PointerMoved(egui::pos2(
+                    300.0 + frame as f32 * 13.0,
+                    200.0 + (frame % 7) as f32 * 60.0,
+                )));
+                let mut out = ctx.run_ui(input, |ui| app.draw(ui));
+                out.textures_delta.clear();
+                tops.push(app.align_with.pane_rect.map(|r| (r.top(), r.bottom())));
+            }
+            let settled = &tops[10..];
+            assert!(
+                settled.iter().all(|r| r.is_some() && *r == settled[0]),
+                "scale {scale}: the pane moves: {tops:?}"
+            );
+            // The reads take the lower half, over the navigator, on the sequence's columns.
+            let (top, bottom) = settled[0].unwrap_or_default();
+            let screen_h = 900.0;
+            assert!(
+                top > screen_h * 0.35 && top < screen_h * 0.6,
+                "{top} of {screen_h}"
+            );
+            assert!(
+                bottom < screen_h - 20.0,
+                "the navigator is under the pane: {bottom}"
+            );
+            assert!(app.seq_view.line.is_some(), "the sequence is on one line");
+        }
+        if let Ok(path) = std::env::var("SNAPPIESNAP_ALIGN_PANE_PNG") {
+            // Each render starts afresh, scrolled to the start: ask for the reads' stretch.
+            app.seq_view.scroll_to = Some(420);
+            let image = app.render(1400, 900, 4.0 / 3.0).unwrap();
+            crate::offscreen::write_png(&path, &image).unwrap();
+        }
     }
 
     const VECTOR_GB: &str = "LOCUS       vector            60 bp    DNA     circular SYN 01-JAN-2026\nORIGIN\n        1 aagcttccgg aattcggcca agcttacgta cgtacgtacg tacgtacgta cgtacgtacg\n//\n";
