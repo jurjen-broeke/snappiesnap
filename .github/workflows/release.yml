@@ -119,7 +119,7 @@ jobs:
           cargo install --locked --git https://github.com/cross-rs/cross cross
           cargo install --locked cargo-deb@^2 cargo-generate-rpm@^0.16
       - name: Build
-        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli
+        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli --features snappiesnap/update-check
       - name: Check the glibc the binaries need
         run: |
           set -euo pipefail
@@ -180,7 +180,7 @@ jobs:
             echo "$tool: $(command -v "$tool")"
           done
       - name: Build
-        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli
+        run: cross build --release --locked --target "$TARGET" -p snappiesnap -p snappiesnap-cli --features snappiesnap/update-check
       - name: Build the installers, signing them when a certificate is configured
         env:
           WINDOWS_CERT_P12_BASE64: ${{ secrets.WINDOWS_CERT_P12_BASE64 }}

@@ -12,6 +12,11 @@ snappiesnap-engine.workspace = true
 snappiesnap-ui-egui.workspace = true
 serde_json.workspace = true
 
+[features]
+# The installed app: look once at startup for a newer release on GitHub (see
+# crates/ui-egui/src/updates.rs). The release packages turn it on; `cargo run` leaves it off.
+update-check = []
+
 [build-dependencies]
 embed-resource.workspace = true
 

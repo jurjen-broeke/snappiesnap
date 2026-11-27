@@ -144,6 +144,9 @@ fn run(args: &[String]) -> ExitCode {
     };
     let mut options = args.options;
     options.remember_settings = true;
+    // Installed builds look for a new release once at startup; never while an agent drives
+    // the app through the control channel.
+    options.check_for_updates = cfg!(feature = "update-check") && options.control_port.is_none();
     let result = eframe::run_native(
         "SnappieSnap",
         native,

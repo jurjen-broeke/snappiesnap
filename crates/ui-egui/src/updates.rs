@@ -1,15 +1,57 @@
-//! Checking for a newer SnappieSnap, only when the user presses "Check for updates" in
-//! Preferences; never automatically. The check downloads a small JSON file announcing the
-//! latest release, `{"version": "0.3.0", "url": "https://..."}`, and compares versions. It
-//! sends nothing about the user (a generic `SnappieSnap-dev` User-Agent).
+//! Checking for a newer SnappieSnap. The installed app (built with the `update-check` feature
+//! of the `snappiesnap` app, as the release packages are) checks once at startup, unless
+//! Preferences turns that off; anyone can check from Preferences with "Check for updates".
+//! The check downloads a small JSON file announcing the latest release,
+//! `{"version": "0.3.0", "url": "https://..."}`, from the project's GitHub repository and
+//! nowhere else, and compares versions. It sends nothing about the user (a generic
+//! `SnappieSnap-dev` User-Agent). Nothing is installed: the user downloads the new version in
+//! their browser and installs it themselves.
 
 use serde::Deserialize;
+
+/// The project's GitHub repository: the only place the check reads from or links to.
+pub const REPOSITORY: &str = "https://github.com/jurjen-broeke/snappiesnap";
 
 /// Where the latest release is announced (an `https://` address of the JSON file above).
 /// The release workflow uploads `latest.json` as an asset of every release, and GitHub serves
 /// the newest one at this address. `None` disables the check, and the button then says so.
 pub const RELEASE_URL: Option<&str> =
     Some("https://github.com/jurjen-broeke/snappiesnap/releases/latest/download/latest.json");
+
+/// A newer release: its version and the pages to offer for it, all in the repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewVersion {
+    /// `major.minor.patch`, rebuilt from the parsed numbers (never the announcement's text).
+    pub version: String,
+    /// The release's page on GitHub (its notes and every package).
+    pub page: String,
+    /// The package for this computer, or the release page where the user has a choice
+    /// (Linux: .deb or .rpm).
+    pub download: String,
+}
+
+impl NewVersion {
+    fn new((major, minor, patch): (u64, u64, u64)) -> Self {
+        let version = format!("{major}.{minor}.{patch}");
+        let page = format!("{REPOSITORY}/releases/tag/v{version}");
+        let file = if cfg!(target_os = "macos") {
+            Some(format!("SnappieSnap-{version}-macos-universal.dmg"))
+        } else if cfg!(target_os = "windows") {
+            Some(format!("SnappieSnap-{version}-windows-x64-setup.exe"))
+        } else {
+            None
+        };
+        let download = match file {
+            Some(file) => format!("{REPOSITORY}/releases/download/v{version}/{file}"),
+            None => page.clone(),
+        };
+        NewVersion {
+            version,
+            page,
+            download,
+        }
+    }
+}
 
 /// Largest announcement we read.
 const MAX_BYTES: usize = 64 * 1024;
@@ -18,10 +60,7 @@ const MAX_BYTES: usize = 64 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckResult {
     UpToDate,
-    Newer {
-        version: String,
-        url: Option<String>,
-    },
+    Newer(NewVersion),
     /// Nothing to check against, or the check failed: why.
     Unavailable(String),
 }
@@ -33,20 +72,22 @@ impl CheckResult {
                 "SnappieSnap {} is the latest version.",
                 env!("CARGO_PKG_VERSION")
             ),
-            CheckResult::Newer { version, url } => match url {
-                Some(url) => format!("SnappieSnap {version} is available: {url}"),
-                None => format!("SnappieSnap {version} is available."),
-            },
+            CheckResult::Newer(new) => format!(
+                "SnappieSnap {} is available (this is {}). Download it with the button in the toolbar, or from {}",
+                new.version,
+                env!("CARGO_PKG_VERSION"),
+                new.page
+            ),
             CheckResult::Unavailable(why) => why.clone(),
         }
     }
 }
 
+/// The announcement. Its `url` is not used: every link is built from the version, so a
+/// changed announcement can never send the user outside the repository.
 #[derive(Deserialize)]
 struct Release {
     version: String,
-    #[serde(default)]
-    url: Option<String>,
 }
 
 /// A `major.minor.patch` version (an optional leading `v`; anything after `-` or `+` is
@@ -74,13 +115,7 @@ pub fn compare(current: &str, announcement: &[u8]) -> CheckResult {
         return unavailable("the release announcement has no usable version");
     };
     if latest > running {
-        CheckResult::Newer {
-            version: release.version.trim().chars().take(40).collect(),
-            // Only web addresses are offered to the user.
-            url: release
-                .url
-                .filter(|u| u.starts_with("https://") && u.len() <= 500),
-        }
+        CheckResult::Newer(NewVersion::new(latest))
     } else {
         CheckResult::UpToDate
     }
@@ -149,12 +184,13 @@ mod tests {
     #[test]
     fn announcements() {
         let newer = compare("0.2.0", br#"{"version": "0.10.0", "url": "https://x/y"}"#);
+        let CheckResult::Newer(new) = newer else {
+            panic!("{newer:?}");
+        };
+        assert_eq!(new.version, "0.10.0");
         assert_eq!(
-            newer,
-            CheckResult::Newer {
-                version: "0.10.0".into(),
-                url: Some("https://x/y".into())
-            }
+            new.page,
+            "https://github.com/jurjen-broeke/snappiesnap/releases/tag/v0.10.0"
         );
         assert_eq!(
             compare("0.2.0", br#"{"version": "0.2.0"}"#),
@@ -164,14 +200,22 @@ mod tests {
             compare("0.2.0", br#"{"version": "0.1.9"}"#),
             CheckResult::UpToDate
         );
-        // Only https links are passed on.
-        assert_eq!(
-            compare("0.2.0", br#"{"version": "1.0.0", "url": "javascript:x"}"#),
-            CheckResult::Newer {
-                version: "1.0.0".into(),
-                url: None
-            }
-        );
+        // The announcement's link and the text around the version are never passed on:
+        // every address is built from the parsed version, inside the repository.
+        let CheckResult::Newer(new) = compare(
+            "0.2.0",
+            br#"{"version": " v1.0.0-rc1 ", "url": "https://elsewhere.example/x"}"#,
+        ) else {
+            panic!("newer");
+        };
+        assert_eq!(new.version, "1.0.0");
+        for link in [&new.page, &new.download] {
+            assert!(
+                link.starts_with(&format!("{REPOSITORY}/releases/")),
+                "{link}"
+            );
+            assert!(link.contains("/v1.0.0"), "{link}");
+        }
         for bad in [
             &b"not json"[..],
             br#"{"version": 3}"#,
@@ -209,12 +253,33 @@ mod tests {
         );
     }
 
-    /// The address shipped in the build is an `https://` one, so the check can never be
-    /// downgraded to plain HTTP by a careless edit.
+    /// The address shipped in the build is an `https://` one in the repository, so the check
+    /// can never be downgraded to plain HTTP or pointed elsewhere by a careless edit.
     #[test]
-    fn the_built_in_address_is_https() {
+    fn the_built_in_address_is_the_repository() {
+        assert!(REPOSITORY.starts_with("https://github.com/"));
         if let Some(url) = RELEASE_URL {
-            assert!(url.starts_with("https://"), "{url}");
+            assert!(url.starts_with(&format!("{REPOSITORY}/releases/")), "{url}");
+        }
+    }
+
+    /// The download is this platform's package, named as the release workflow names it.
+    #[test]
+    fn downloads_name_this_platforms_package() {
+        let new = NewVersion::new((0, 45, 0));
+        let base = format!("{REPOSITORY}/releases/download/v0.45.0/");
+        if cfg!(target_os = "macos") {
+            assert_eq!(
+                new.download,
+                format!("{base}SnappieSnap-0.45.0-macos-universal.dmg")
+            );
+        } else if cfg!(target_os = "windows") {
+            assert_eq!(
+                new.download,
+                format!("{base}SnappieSnap-0.45.0-windows-x64-setup.exe")
+            );
+        } else {
+            assert_eq!(new.download, new.page);
         }
     }
 }

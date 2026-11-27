@@ -4,6 +4,12 @@ What each version of SnappieSnap added and fixed, newest first.
 
 Versions are numbered 0.x.y. A version that adds features raises x. A version that only fixes things raises y. Each entry lists **Added** (new features) and **Fixed** (things that were broken or didn't work) separately.
 
+## 0.45.0 (2026-11-27)
+
+### Added
+
+- **SnappieSnap tells you when a new version is out.** The installed app looks once, when it starts, at SnappieSnap's GitHub releases page, and nowhere else. If a newer version is there, a small **Update** button appears in the toolbar. It offers the download for your computer (on Linux, the release page, so you can choose the .deb or the .rpm) and the release notes, both opened in your browser. Nothing is installed for you: install the new version the same way you installed this one. Nothing about you is sent, and Preferences > General can turn the check off.
+
 ## 0.44.0 (2026-11-27)
 
 ### Added

@@ -1120,6 +1120,8 @@ pub struct UiState {
     pub sequence_font: f32,
     /// Reopen the window at the size it had when the app last ran.
     pub restore_window: bool,
+    /// Look for a new version of SnappieSnap once at startup (installed builds only).
+    pub check_updates: bool,
     /// Map zoom (1 = the whole molecule fits).
     pub map_zoom: f32,
     /// NCBI genetic code of the frame translations.
@@ -1165,6 +1167,7 @@ impl Default for UiState {
             ui_scale: 1.0,
             sequence_font: SEQUENCE_FONT_DEFAULT,
             restore_window: true,
+            check_updates: true,
             map_zoom: 1.0,
             genetic_code: 1,
             primer_tails: TailStyle::default(),
@@ -1340,6 +1343,7 @@ pub struct UiPatch {
     pub ui_scale: Option<f32>,
     pub sequence_font: Option<f32>,
     pub restore_window: Option<bool>,
+    pub check_updates: Option<bool>,
     pub map_zoom: Option<f32>,
     pub trace_zoom: Option<f32>,
     pub trace_gain: Option<f32>,
@@ -1454,6 +1458,7 @@ impl UiState {
             (patch.orfs, &mut self.orfs),
             (patch.preferences, &mut self.preferences),
             (patch.restore_window, &mut self.restore_window),
+            (patch.check_updates, &mut self.check_updates),
         ] {
             if let Some(b) = value {
                 *field = b;

@@ -44,9 +44,15 @@ Apple hardware only. The job runs on GitHub's `macos-latest` runner.
 | `SnappieSnap-<v>-macos-universal.dmg` | `SnappieSnap.app`, dragged to Applications (or `~/Applications`) | none |
 | `SnappieSnap-<v>-web.tar.gz` | nothing: static files for a web server ([web.md](web.md)) | none for users; the server's own |
 
-Every release also carries `latest.json`, which the app's **Check for updates** button reads
-from the latest release (`crates/ui-egui/src/updates.rs`). Nothing is checked automatically and
-nothing about the user is ever sent.
+Every release also carries `latest.json`, which the app reads from the latest release on
+GitHub (`crates/ui-egui/src/updates.rs`). The packaged app is built with the `update-check`
+feature of the `snappiesnap` crate and reads it once at startup (Preferences > General can turn
+that off); **Check for updates** in Preferences reads it on demand in any build. A plain
+`cargo run` and a session driven through `--control` never check by themselves. When a newer
+version exists, a small **Update** button in the toolbar offers its download (the platform's
+package, or the release page on Linux) and its release notes in the browser. Nothing is ever
+installed for the user, only the GitHub repository is contacted, and nothing about the user is
+sent.
 
 SnappieSnap's own files (settings, libraries, downloads) are always kept in the user's own
 folder, never next to the program. See the README.

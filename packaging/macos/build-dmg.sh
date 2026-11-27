@@ -21,7 +21,7 @@ export MACOSX_DEPLOYMENT_TARGET=11.0
 rustup toolchain install
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 for target in aarch64-apple-darwin x86_64-apple-darwin; do
-  cargo build --release --locked --target "$target" -p snappiesnap -p snappiesnap-cli
+  cargo build --release --locked --target "$target" -p snappiesnap -p snappiesnap-cli --features snappiesnap/update-check
 done
 
 rm -rf "$OUT" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

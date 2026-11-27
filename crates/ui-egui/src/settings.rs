@@ -54,6 +54,10 @@ pub struct Settings {
     /// Reopen the window at its last size.
     #[serde(deserialize_with = "lenient_restore")]
     pub restore_window: bool,
+    /// Look for a new version once at startup (installed builds only). A broken value means
+    /// yes, like a missing one.
+    #[serde(deserialize_with = "lenient_restore")]
+    pub check_updates: bool,
     /// What the ORF layer shows in the sequence view, and the genetic code of translations
     /// (an NCBI table number; one that doesn't exist means the standard code).
     #[serde(deserialize_with = "lenient_default")]
@@ -189,6 +193,7 @@ impl Default for Settings {
             ui_scale: 1.0,
             sequence_font: crate::state::SEQUENCE_FONT_DEFAULT,
             restore_window: true,
+            check_updates: true,
             translation: Translation::default(),
             genetic_code: 1,
             primer_tails: crate::state::TailStyle::default(),
@@ -308,6 +313,7 @@ mod tests {
             ui_scale: 1.25,
             sequence_font: 17.0,
             restore_window: false,
+            check_updates: false,
             translation: Translation::Six,
             genetic_code: 11,
             primer_binding: BindingPrefs {
@@ -332,7 +338,7 @@ mod tests {
         std::fs::write(
             &path,
             br#"{"theme": "dark", "preferences_page": "plugins", "ui_scale": 40, "sequence_font": "big",
-                "restore_window": "yes", "window": {"width": "wide"},
+                "restore_window": "yes", "check_updates": 0, "window": {"width": "wide"},
                 "translation": "nine", "genetic_code": 7, "primer_binding": {"short": {"min_tm": "hot"}}}"#,
         )
         .unwrap();
@@ -343,9 +349,10 @@ mod tests {
                 loaded.preferences_page,
                 loaded.ui_scale,
                 loaded.restore_window,
+                loaded.check_updates,
                 loaded.window
             ),
-            (PrefsPage::General, 2.0, true, None)
+            (PrefsPage::General, 2.0, true, true, None)
         );
         assert_eq!(loaded.sequence_font, crate::state::SEQUENCE_FONT_DEFAULT);
         assert_eq!(

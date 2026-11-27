@@ -315,10 +315,21 @@ fn general(ui: &mut Ui, t: &Tokens, state: &mut UiState, extra: &Extra<'_>) -> O
         if let Some(answer) = extra.update {
             ui.add(egui::Label::new(answer).wrap());
         }
+        // The web version is always the latest one, so there is nothing to check at start.
+        if cfg!(not(target_arch = "wasm32")) {
+            row(ui, t, "At start", None, |ui| {
+                ui.checkbox(
+                    &mut state.check_updates,
+                    "Check for a new version when SnappieSnap starts",
+                );
+            });
+        }
         note(
             ui,
             t,
-            "SnappieSnap only looks for a new version when you press the button.",
+            "SnappieSnap looks only at its own GitHub releases page and sends nothing about you. \
+             A new version is never installed for you: download it and install it as you \
+             installed this one.",
         );
     });
     action

@@ -29,6 +29,9 @@ pub struct LaunchOptions {
     pub record: Option<String>,
     /// Load and save settings (theme, view, folder panel) between sessions.
     pub remember_settings: bool,
+    /// Look once, at startup, for a newer release on GitHub (if Preferences allows it). The
+    /// installed app sets this; development builds and agent sessions leave it off.
+    pub check_for_updates: bool,
 }
 
 /// A command that needs confirmation because it would drop unsaved changes.
@@ -104,9 +107,11 @@ pub struct App {
     /// The Primers tab's lab-oligo section (the library is the lab's, not one document's).
     oligo_view: crate::oligo_view::OligoViewState,
     history_cache: crate::history_view::HistoryCache,
-    /// An update check the user started, and the last one's answer.
+    /// An update check (the user's, or the one at startup), and the last one's answer.
     update_check: Option<std::sync::mpsc::Receiver<crate::updates::CheckResult>>,
     update_answer: Option<String>,
+    /// A newer release a check found: the toolbar offers it until the user dismisses it.
+    new_version: Option<crate::updates::NewVersion>,
     /// A REBASE download running in the background.
     #[cfg(not(target_arch = "wasm32"))]
     download: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
@@ -183,6 +188,7 @@ impl App {
             history_cache: Default::default(),
             update_check: None,
             update_answer: None,
+            new_version: None,
             #[cfg(not(target_arch = "wasm32"))]
             download: None,
             web_inbox: Default::default(),
@@ -221,6 +227,7 @@ impl App {
             app.state.ui_scale = crate::state::clamp_ui_scale(s.ui_scale);
             app.state.sequence_font = crate::state::clamp_sequence_font(s.sequence_font);
             app.state.restore_window = s.restore_window;
+            app.state.check_updates = s.check_updates;
             app.session.set_primer_binding(s.primer_binding);
             app.state.translation = s.translation;
             app.state.primer_tails = s.primer_tails;
@@ -236,6 +243,10 @@ impl App {
             app.settings_path = Some(path);
         }
         app.follow_document_folder();
+        // One check, now, after the settings say whether the user wants it.
+        if options.check_for_updates && app.state.check_updates {
+            app.update_check = Some(crate::updates::start(app.platform_handle()));
+        }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = &options.record {
             match std::fs::File::create(path) {
@@ -457,6 +468,7 @@ impl App {
             ui_scale: self.state.ui_scale,
             sequence_font: self.state.sequence_font,
             restore_window: self.state.restore_window,
+            check_updates: self.state.check_updates,
             translation: self.state.translation,
             genetic_code: self.state.genetic_code,
             primer_tails: self.state.primer_tails,
@@ -609,6 +621,9 @@ impl App {
             Ok(result) => {
                 self.update_answer = Some(result.message());
                 self.update_check = None;
+                if let crate::updates::CheckResult::Newer(new) = result {
+                    self.new_version = Some(new);
+                }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {
                 ctx.request_repaint_after(std::time::Duration::from_millis(200));
@@ -1870,6 +1885,7 @@ impl App {
                 if tool_button(ui, &t, Icon::Preferences, "Preferences", true) {
                     self.state.preferences = !self.state.preferences;
                 }
+                self.update_button(ui, &t);
                 if let Some(d) = self.session.document().filter(|_| !in_experiment) {
                     ui.add_space(t.spacing * 2.0);
                     ui.label(RichText::new(format!("{} bp", d.molecule.len())).color(t.text_muted));
@@ -1879,6 +1895,83 @@ impl App {
                 }
             });
         });
+    }
+
+    /// The toolbar's small "Update" button, while a newer release is known, and its menu:
+    /// download it or read its notes in the browser, or put the button away until next start.
+    /// Installing is left to the user.
+    fn update_button(&mut self, ui: &mut egui::Ui, t: &Tokens) {
+        let Some(new) = self.new_version.clone() else {
+            return;
+        };
+        ui.add_space(t.spacing);
+        let button = ui
+            .add(
+                egui::Button::new(
+                    RichText::new(format!("Update {}", new.version))
+                        .small()
+                        .color(t.accent_text),
+                )
+                .fill(t.accent)
+                .corner_radius(CornerRadius::same(t.radius)),
+            )
+            .on_hover_text(format!(
+                "SnappieSnap {} is available (this is {})",
+                new.version,
+                env!("CARGO_PKG_VERSION")
+            ));
+        let mut open = None;
+        let mut dismiss = false;
+        egui::Popup::menu(&button).show(|ui| {
+            ui.set_min_width(280.0);
+            ui.label(RichText::new(format!("SnappieSnap {} is available", new.version)).strong());
+            ui.label(
+                RichText::new(format!(
+                    "You have {}. Download the new version and install it as you installed \
+                     this one; your files and settings stay as they are.",
+                    env!("CARGO_PKG_VERSION")
+                ))
+                .small()
+                .color(t.text_muted),
+            );
+            ui.separator();
+            let download = if new.download == new.page {
+                "Download\u{2026}"
+            } else {
+                "Download"
+            };
+            if ui
+                .add(egui::Button::new(download).min_size(vec2(270.0, 0.0)))
+                .on_hover_text(&new.download)
+                .clicked()
+            {
+                open = Some(new.download.clone());
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("What's new").min_size(vec2(270.0, 0.0)))
+                .on_hover_text(&new.page)
+                .clicked()
+            {
+                open = Some(new.page.clone());
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("Not now").min_size(vec2(270.0, 0.0)))
+                .clicked()
+            {
+                dismiss = true;
+                ui.close();
+            }
+        });
+        if let Some(url) = open
+            && let Err(e) = crate::browser::open(ui.ctx(), &url)
+        {
+            self.status_error(e);
+        }
+        if dismiss {
+            self.new_version = None;
+        }
     }
 
     /// When the active document changes, keep how the old one was viewed and restore how the
@@ -4634,8 +4727,11 @@ mod tests {
             control_port: None,
             record: Some(path.to_string_lossy().into_owned()),
             remember_settings: false,
+            check_for_updates: false,
         };
         let mut app = App::new(&egui::Context::default(), Session::new(), &options);
+        // Tests (and agents) never look for updates: no network at startup.
+        assert!(app.update_check.is_none());
         app.run(
             "new",
             json!({"residues": "ACGTACGTAC", "topology": "circular"}),
@@ -4795,6 +4891,36 @@ mod tests {
         let (_, parts) = app.info.clone().unwrap();
         assert_eq!(parts.first().map(String::as_str), Some("GC 50.0%"));
         assert!(parts.iter().any(|p| p.starts_with("Tm ")), "{parts:?}");
+    }
+
+    /// A newer release found by a check becomes the toolbar's Update button, linking only into
+    /// the repository; "up to date" and failures add no button. Set
+    /// `SNAPPIESNAP_UPDATE_PNG=/path.png` to look at it.
+    #[test]
+    fn a_newer_release_shows_the_update_button() {
+        use crate::updates::{CheckResult, REPOSITORY, compare};
+        let mut app = App::headless(Session::new());
+        let ctx = egui::Context::default();
+        for (answer, button) in [
+            (CheckResult::UpToDate, false),
+            (CheckResult::Unavailable("offline".into()), false),
+            (compare("0.1.0", br#"{"version": "99.0.0"}"#), true),
+        ] {
+            let (tx, rx) = std::sync::mpsc::channel();
+            tx.send(answer).unwrap();
+            app.update_check = Some(rx);
+            app.poll_update_check(&ctx);
+            assert!(app.update_check.is_none());
+            assert_eq!(app.new_version.is_some(), button);
+        }
+        let new = app.new_version.clone().unwrap();
+        assert_eq!(new.version, "99.0.0");
+        assert!(new.download.starts_with(REPOSITORY), "{}", new.download);
+        assert!(app.update_answer.as_deref().unwrap().contains("99.0.0"));
+        let image = app.render(1100, 300, 1.0).unwrap();
+        if let Ok(path) = std::env::var("SNAPPIESNAP_UPDATE_PNG") {
+            crate::offscreen::write_png(&path, &image).unwrap();
+        }
     }
 
     /// The Preferences window draws, and the background it sets applies to the Map and
